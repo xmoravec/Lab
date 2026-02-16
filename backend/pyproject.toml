@@ -18,3 +18,10 @@ module = [
   "importlib.metadata",
 ]
 ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = [
+  "wordfreq",
+  "wordfreq.*",
+]
+ignore_missing_imports = true

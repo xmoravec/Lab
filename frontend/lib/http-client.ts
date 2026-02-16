@@ -2,6 +2,40 @@ function resolvePublicApiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 }
 
+type ApiErrorBody = {
+  detail?: string;
+  message?: string;
+};
+
+export class ApiRequestError extends Error {
+  status: number;
+  path: string;
+  method: string;
+  requestUrl: string;
+  responseBody?: string;
+
+  constructor(params: {
+    message: string;
+    status: number;
+    path: string;
+    method: string;
+    requestUrl: string;
+    responseBody?: string;
+  }) {
+    super(params.message);
+    this.name = "ApiRequestError";
+    this.status = params.status;
+    this.path = params.path;
+    this.method = params.method;
+    this.requestUrl = params.requestUrl;
+    this.responseBody = params.responseBody;
+  }
+
+  get isExpectedClientRejection(): boolean {
+    return this.status >= 400 && this.status < 500;
+  }
+}
+
 export function resolveApiBaseUrl(): string {
   if (typeof window === "undefined") {
     return process.env.API_INTERNAL_BASE_URL ?? "http://backend:8000";
@@ -11,17 +45,76 @@ export function resolveApiBaseUrl(): string {
 }
 
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${resolveApiBaseUrl()}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
+  const requestUrl = `${resolveApiBaseUrl()}${path}`;
+  const method = init?.method ?? "GET";
+  let response: Response;
+
+  try {
+    response = await fetch(requestUrl, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {}),
+      },
+      cache: "no-store",
+    });
+  } catch (error) {
+    console.error("API network request failed", {
+      path,
+      method,
+      requestUrl,
+      error,
+    });
+    throw error;
+  }
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    let message = `Request failed: ${response.status}`;
+    let responseBody: string | undefined;
+
+    try {
+      const errorPayload = (await response.json()) as ApiErrorBody;
+      if (errorPayload.detail) {
+        message = errorPayload.detail;
+      } else if (errorPayload.message) {
+        message = errorPayload.message;
+      }
+    } catch {
+      try {
+        responseBody = await response.text();
+        if (responseBody) {
+          message = `${message} - ${responseBody}`;
+        }
+      } catch {
+        // Keep default message when response body cannot be read.
+      }
+    }
+
+    const apiError = new ApiRequestError({
+      message,
+      status: response.status,
+      path,
+      method,
+      requestUrl,
+      responseBody,
+    });
+
+    const logDetails = {
+      path,
+      method,
+      requestUrl,
+      status: response.status,
+      message,
+      responseBody,
+    };
+
+    if (apiError.isExpectedClientRejection) {
+      console.warn("API request rejected", logDetails);
+    } else {
+      console.error("API request failed", logDetails);
+    }
+
+    throw apiError;
   }
 
   return (await response.json()) as T;

@@ -92,11 +92,34 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Phase-1 behavior ensures one minimal seed document exists for the Wordle prototype.
 - API responses are validated through Pydantic schemas before returning to clients.
 
+### Wordle module
+
+- Backend Wordle implementation is encapsulated under `backend/app/games/wordle/`.
+- Main responsibilities are split into:
+  - `word_bank.py` for frequency-based candidate pools and difficulty selection
+  - `evaluator.py` for Wordle letter-state evaluation logic
+  - `repository.py` for MongoDB persistence
+  - `service.py` for gameplay orchestration and validation
+- Mongo collection `wordle_games` stores all rounds, guesses, and outcomes.
+- Supports two difficulties:
+  - `common`: top ~2k five-letter words
+  - `extended`: top ~8k five-letter words
+
 ## Frontend architecture
 
 - App Router structure under `frontend/app/`
 - Typed API client under `frontend/lib/api.ts`
 - Home page is a minimal phase-1 shell using backend-sourced content.
+- Wordle UI is encapsulated under `frontend/app/games/wordle/` with local API wrapper and animation-focused styling.
+
+## Wordle API
+
+- `GET /api/games/wordle/menu`
+  - Returns available difficulties, latest active game (auto-resume), and previous games list.
+- `POST /api/games/wordle/start`
+  - Starts a new game or resumes an existing in-progress game.
+- `POST /api/games/wordle/guess`
+  - Validates and evaluates a guess, persists attempt, and returns updated game state.
 
 ## API contract and Python-JS interoperability
 

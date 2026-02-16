@@ -2,14 +2,18 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import mongo_manager
 from app.services.status_reporter import report_status
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @asynccontextmanager
@@ -33,6 +37,15 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.api_prefix)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(_: Request, error: Exception) -> JSONResponse:
+    logger.exception("Unhandled backend exception", exc_info=error)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
 
 
 @app.get("/")

@@ -1,0 +1,90 @@
+.page {
+  min-height: calc(100vh - 4rem);
+}
+
+.glow {
+  box-shadow:
+    0 0 0 1px rgba(244, 114, 182, 0.2),
+    0 12px 50px rgba(12, 10, 25, 0.65),
+    0 0 80px rgba(139, 92, 246, 0.22);
+}
+
+.tile {
+  transform-style: preserve-3d;
+  transition:
+    transform 150ms ease,
+    border-color 220ms ease,
+    background-color 220ms ease;
+}
+
+.tilePop {
+  animation: tile-pop 120ms ease-out;
+}
+
+.tileReveal {
+  animation: tile-flip 580ms ease forwards;
+}
+
+.rowShake {
+  animation: row-shake 320ms ease;
+}
+
+.keyPulse {
+  animation: key-pulse 180ms ease;
+}
+
+@keyframes tile-pop {
+  0% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes tile-flip {
+  0% {
+    transform: rotateX(0);
+  }
+  45% {
+    transform: rotateX(90deg);
+  }
+  55% {
+    transform: rotateX(90deg);
+  }
+  100% {
+    transform: rotateX(0);
+  }
+}
+
+@keyframes row-shake {
+  10%,
+  90% {
+    transform: translateX(-2px);
+  }
+  20%,
+  80% {
+    transform: translateX(4px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-6px);
+  }
+  40%,
+  60% {
+    transform: translateX(6px);
+  }
+}
+
+@keyframes key-pulse {
+  0% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}

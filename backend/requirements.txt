@@ -4,3 +4,4 @@ pydantic-settings>=2.13.0,<3.0.0
 motor>=3.7.1,<4.0.0
 httpx>=0.28.1,<1.0.0
 mypy>=1.17.1,<2.0.0
+wordfreq>=3.1.1,<4.0.0
