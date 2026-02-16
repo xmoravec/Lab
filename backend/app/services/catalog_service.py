@@ -10,9 +10,9 @@ from app.schemas.catalog import GameCard, GamesCatalogResponse, HomeContentRespo
 
 DEFAULT_WORDLE_GAME: dict[str, str | int] = {
     "slug": "wordle",
-    "name": "Wordle Prototype",
-    "summary": "Guess the hidden word with color feedback. REST-first implementation in progress.",
-    "status": "coming-soon",
+    "name": "Wordle",
+    "summary": "Guess the hidden five-letter word with color feedback and multiple difficulty pools.",
+    "status": "playable",
     "accent": "from-violet-500 to-fuchsia-500",
     "estimated_session_minutes": 5,
 }
@@ -30,6 +30,12 @@ async def _ensure_seed_data() -> None:
     existing_wordle = await collection.find_one({"slug": DEFAULT_WORDLE_GAME["slug"]})
     if existing_wordle is None:
         await collection.insert_one(DEFAULT_WORDLE_GAME)
+        return
+
+    await collection.update_one(
+        {"slug": DEFAULT_WORDLE_GAME["slug"]},
+        {"$set": DEFAULT_WORDLE_GAME},
+    )
 
 
 async def _get_game_cards() -> list[GameCard]:

@@ -97,8 +97,12 @@ def _to_game_state(game_document: dict[str, Any], include_answer: bool) -> Wordl
 
 class WordleService:
     async def get_menu(self) -> WordleMenuResponse:
-        active_game_document = await wordle_repository.get_latest_in_progress()
-        history_documents = await wordle_repository.list_recent_games()
+        try:
+            active_game_document = await wordle_repository.get_latest_in_progress()
+            history_documents = await wordle_repository.list_recent_finished_games()
+        except Exception:  # noqa: BLE001
+            logger.exception("Wordle menu query failed")
+            _raise_service_error(status_code=500, message="Failed to load Wordle menu")
 
         active_game = (
             _to_game_state(active_game_document, include_answer=False)
@@ -121,21 +125,25 @@ class WordleService:
         )
 
     async def start_game(self, request: StartWordleRequest) -> StartWordleResponse:
-        if not request.force_new:
-            in_progress = await wordle_repository.get_latest_in_progress()
-            if in_progress is not None:
-                return StartWordleResponse(
-                    resumed_existing=True,
-                    game=_to_game_state(in_progress, include_answer=False),
-                )
+        try:
+            if not request.force_new:
+                in_progress = await wordle_repository.get_latest_in_progress()
+                if in_progress is not None:
+                    return StartWordleResponse(
+                        resumed_existing=True,
+                        game=_to_game_state(in_progress, include_answer=False),
+                    )
 
-        target_word = choose_target_word(request.difficulty)
-        game_document = await wordle_repository.create_game(
-            difficulty=request.difficulty,
-            target_word=target_word,
-            max_attempts=MAX_ATTEMPTS,
-            word_length=WORD_LENGTH,
-        )
+            target_word = choose_target_word(request.difficulty)
+            game_document = await wordle_repository.create_game(
+                difficulty=request.difficulty,
+                target_word=target_word,
+                max_attempts=MAX_ATTEMPTS,
+                word_length=WORD_LENGTH,
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("Wordle start failed difficulty=%s", request.difficulty.value)
+            _raise_service_error(status_code=500, message="Failed to start Wordle game")
 
         return StartWordleResponse(
             resumed_existing=False,
@@ -143,69 +151,79 @@ class WordleService:
         )
 
     async def submit_guess(self, request: GuessWordleRequest) -> GuessWordleResponse:
-        game_document = await wordle_repository.get_game(request.game_id)
-        if game_document is None:
-            _raise_service_error(
-                status_code=404,
-                message="Game not found",
-                game_id=request.game_id,
-            )
+        try:
+            game_document = await wordle_repository.get_game(request.game_id)
+            if game_document is None:
+                _raise_service_error(
+                    status_code=404,
+                    message="Game not found",
+                    game_id=request.game_id,
+                )
 
-        status = WordleGameStatus(game_document["status"])
-        if status != WordleGameStatus.IN_PROGRESS:
+            status = WordleGameStatus(game_document["status"])
+            if status != WordleGameStatus.IN_PROGRESS:
+                return GuessWordleResponse(
+                    accepted=False,
+                    message="This game is already finished",
+                    game=_to_game_state(game_document, include_answer=True),
+                )
+
+            guess = request.guess.strip().lower()
+            if len(guess) != WORD_LENGTH or not guess.isalpha():
+                return _rejected_guess_response(
+                    game_document=game_document,
+                    message="Guess must be a five-letter word",
+                    guess=guess,
+                )
+
+            difficulty = WordleDifficulty(game_document["difficulty"])
+            if not is_allowed_guess(guess, difficulty):
+                return _rejected_guess_response(
+                    game_document=game_document,
+                    message="Word not found in allowed word list",
+                    guess=guess,
+                )
+
+            evaluations = evaluate_guess(guess, game_document["target_word"])
+            attempt = {
+                "guess": guess,
+                "submitted_at": datetime.now(timezone.utc),
+                "evaluations": [
+                    {"letter": letter, "state": state.value}
+                    for letter, state in zip(guess, evaluations, strict=True)
+                ],
+            }
+
+            game_document["attempts"].append(attempt)
+            game_document["attempts_used"] = len(game_document["attempts"])
+
+            message = "Keep going"
+            if guess == game_document["target_word"]:
+                game_document["status"] = WordleGameStatus.WON.value
+                game_document["completed_at"] = datetime.now(timezone.utc)
+                message = "You solved it"
+            elif game_document["attempts_used"] >= game_document["max_attempts"]:
+                game_document["status"] = WordleGameStatus.LOST.value
+                game_document["completed_at"] = datetime.now(timezone.utc)
+                message = "No attempts left"
+
+            await wordle_repository.save_game(game_document)
+
+            solved_or_done = game_document["status"] != WordleGameStatus.IN_PROGRESS.value
             return GuessWordleResponse(
-                accepted=False,
-                message="This game is already finished",
-                game=_to_game_state(game_document, include_answer=True),
+                accepted=True,
+                message=message,
+                game=_to_game_state(game_document, include_answer=solved_or_done),
             )
-
-        guess = request.guess.strip().lower()
-        if len(guess) != WORD_LENGTH or not guess.isalpha():
-            return _rejected_guess_response(
-                game_document=game_document,
-                message="Guess must be a five-letter word",
-                guess=guess,
+        except WordleServiceError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Wordle guess processing failed game_id=%s guess=%s",
+                request.game_id,
+                request.guess,
             )
-
-        difficulty = WordleDifficulty(game_document["difficulty"])
-        if not is_allowed_guess(guess, difficulty):
-            return _rejected_guess_response(
-                game_document=game_document,
-                message="Word not found in allowed word list",
-                guess=guess,
-            )
-
-        evaluations = evaluate_guess(guess, game_document["target_word"])
-        attempt = {
-            "guess": guess,
-            "submitted_at": datetime.now(timezone.utc),
-            "evaluations": [
-                {"letter": letter, "state": state.value}
-                for letter, state in zip(guess, evaluations, strict=True)
-            ],
-        }
-
-        game_document["attempts"].append(attempt)
-        game_document["attempts_used"] = len(game_document["attempts"])
-
-        message = "Keep going"
-        if guess == game_document["target_word"]:
-            game_document["status"] = WordleGameStatus.WON.value
-            game_document["completed_at"] = datetime.now(timezone.utc)
-            message = "You solved it"
-        elif game_document["attempts_used"] >= game_document["max_attempts"]:
-            game_document["status"] = WordleGameStatus.LOST.value
-            game_document["completed_at"] = datetime.now(timezone.utc)
-            message = "No attempts left"
-
-        await wordle_repository.save_game(game_document)
-
-        solved_or_done = game_document["status"] != WordleGameStatus.IN_PROGRESS.value
-        return GuessWordleResponse(
-            accepted=True,
-            message=message,
-            game=_to_game_state(game_document, include_answer=solved_or_done),
-        )
+            _raise_service_error(status_code=500, message="Unexpected error while evaluating guess")
 
 
 wordle_service = WordleService()

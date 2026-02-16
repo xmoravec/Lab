@@ -17,7 +17,9 @@ class MongoManager:
     async def connect(self) -> None:
         self.client = AsyncIOMotorClient(settings.mongo_uri)
         self.db = self.client[settings.mongo_db_name]
-        await self.ping()
+        if not await self.ping():
+            error_message = self.last_error or "Unknown Mongo connection error"
+            raise RuntimeError(f"Mongo connection failed during startup: {error_message}")
 
     async def disconnect(self) -> None:
         if self.client is not None:

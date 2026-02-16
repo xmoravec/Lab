@@ -107,6 +107,10 @@ function keyboardTone(state?: TileState): string {
 export default function WordlePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [difficulty, setDifficulty] = useState<WordleDifficulty>("common");
+  const [availableDifficulties, setAvailableDifficulties] = useState<WordleDifficulty[]>([
+    "common",
+    "extended",
+  ]);
   const [currentGame, setCurrentGame] = useState<WordleGameState | null>(null);
   const [previousGames, setPreviousGames] = useState<WordleGameState[]>([]);
   const [currentGuess, setCurrentGuess] = useState("");
@@ -127,7 +131,8 @@ export default function WordlePage() {
 
         setCurrentGame(menu.activeGame ?? null);
         setPreviousGames(menu.previousGames);
-        setDifficulty(menu.availableDifficulties[0] ?? "common");
+        setAvailableDifficulties(menu.availableDifficulties);
+        setDifficulty(menu.activeGame?.difficulty ?? menu.availableDifficulties[0] ?? "common");
 
         if (menu.activeGame) {
           setNotice("Resumed your latest active game.");
@@ -372,7 +377,7 @@ export default function WordlePage() {
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                {(["common", "extended"] as const).map((option) => (
+                {availableDifficulties.map((option) => (
                   <button
                     key={option}
                     type="button"

@@ -73,21 +73,23 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
     let responseBody: string | undefined;
 
     try {
-      const errorPayload = (await response.json()) as ApiErrorBody;
-      if (errorPayload.detail) {
-        message = errorPayload.detail;
-      } else if (errorPayload.message) {
-        message = errorPayload.message;
-      }
-    } catch {
-      try {
-        responseBody = await response.text();
-        if (responseBody) {
+      responseBody = await response.text();
+      if (responseBody) {
+        try {
+          const errorPayload = JSON.parse(responseBody) as ApiErrorBody;
+          if (errorPayload.detail) {
+            message = errorPayload.detail;
+          } else if (errorPayload.message) {
+            message = errorPayload.message;
+          } else {
+            message = `${message} - ${responseBody}`;
+          }
+        } catch {
           message = `${message} - ${responseBody}`;
         }
-      } catch {
-        // Keep default message when response body cannot be read.
       }
+    } catch {
+      // Keep default message when response body cannot be read.
     }
 
     const apiError = new ApiRequestError({

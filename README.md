@@ -8,7 +8,7 @@ It is built as a Docker-first monorepo with:
 - FastAPI backend (`backend/`)
 - MongoDB database (`mongo` container)
 
-Current status: a runnable local baseline is implemented with a full Mongo-backed Wordle flow, typed API contracts, CORS-safe configuration, Mongo connectivity checks, and startup status reporting.
+Current status: a runnable local baseline is implemented with a full Mongo-backed Wordle flow, typed API contracts, CORS-safe configuration, fail-fast Mongo startup checks, startup status reporting, and refreshed Home/Games UX that properly features playable titles.
 
 ## Quick start
 

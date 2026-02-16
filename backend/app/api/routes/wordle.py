@@ -21,6 +21,8 @@ logger = logging.getLogger("uvicorn.error")
 async def get_wordle_menu() -> WordleMenuResponse:
     try:
         return await wordle_service.get_menu()
+    except WordleServiceError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.message) from error
     except Exception as error:  # noqa: BLE001
         logger.exception("Unhandled wordle menu error")
         raise HTTPException(status_code=500, detail="Failed to load Wordle menu") from error
@@ -30,6 +32,8 @@ async def get_wordle_menu() -> WordleMenuResponse:
 async def start_wordle_game(payload: StartWordleRequest) -> StartWordleResponse:
     try:
         return await wordle_service.start_game(payload)
+    except WordleServiceError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.message) from error
     except Exception as error:  # noqa: BLE001
         logger.exception("Unhandled wordle start error difficulty=%s", payload.difficulty.value)
         raise HTTPException(status_code=500, detail="Failed to start Wordle game") from error

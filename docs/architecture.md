@@ -70,6 +70,7 @@ Current implementation target is a stable local development baseline (phase 1).
 ### Mongo lifecycle
 
 - Startup: create client, select DB, ping
+- Startup is fail-fast: if ping fails, API startup exits with an explicit error
 - Shutdown: close client cleanly
 - Connection state is tracked and exposed through health/ping behavior
 
@@ -89,7 +90,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 ### Catalog data source
 
 - Catalog data is sourced from MongoDB collection `games`.
-- Phase-1 behavior ensures one minimal seed document exists for the Wordle prototype.
+- Phase-1 behavior ensures one canonical Wordle seed document exists and stays synchronized with current metadata.
 - API responses are validated through Pydantic schemas before returning to clients.
 
 ### Wordle module
@@ -109,7 +110,9 @@ This gives a deterministic “ready” signal and a reusable function for future
 
 - App Router structure under `frontend/app/`
 - Typed API client under `frontend/lib/api.ts`
-- Home page is a minimal phase-1 shell using backend-sourced content.
+- Home page features a hero, spotlight game, and scalable experiment sections using backend-sourced content.
+- Games page provides a richer catalog view with playable-first grouping and summary stats.
+- Shared game cards expose clickable game titles and a prominent playable CTA for fast entry into active games.
 - Wordle UI is encapsulated under `frontend/app/games/wordle/` with local API wrapper and animation-focused styling.
 
 ## Wordle API
@@ -177,14 +180,15 @@ This gives a deterministic “ready” signal and a reusable function for future
 ## What is implemented now
 
 - Dockerized monorepo baseline with hot reload
-- FastAPI + Mongo startup/shutdown integration
+- FastAPI + Mongo startup/shutdown integration with fail-fast DB startup
 - Mongo-backed game catalog (collection: `games`)
+- Playable Wordle is fully featured in Home and Games surfaces
 - Typed Next.js frontend and typed API client
 - Startup-ready structured status reporting
 
 ## Near-term roadmap
 
 1. Extend catalog beyond single seeded Wordle document
-2. Add first complete REST Wordle game flow
-3. Introduce tests and CI checks in later phases
+2. Add tests and CI checks for API + frontend contracts
+3. Expand multi-game frontend modules and shared game shell patterns
 4. Add auth/accounts/history/leaderboards

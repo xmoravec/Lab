@@ -61,5 +61,10 @@ class WordleRepository:
     async def list_recent_games(self, limit: int = 40) -> list[dict[str, Any]]:
         return await self._collection().find({}).sort("started_at", -1).to_list(length=limit)
 
+    async def list_recent_finished_games(self, limit: int = 40) -> list[dict[str, Any]]:
+        return await self._collection().find(
+            {"status": {"$in": [WordleGameStatus.WON.value, WordleGameStatus.LOST.value]}},
+        ).sort("started_at", -1).to_list(length=limit)
+
 
 wordle_repository = WordleRepository()

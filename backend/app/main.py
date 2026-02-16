@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -45,6 +45,31 @@ async def unhandled_exception_handler(_: Request, error: Exception) -> JSONRespo
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, error: HTTPException) -> JSONResponse:
+    if error.status_code >= 500:
+        logger.error(
+            "HTTP error status=%s method=%s path=%s detail=%s",
+            error.status_code,
+            request.method,
+            request.url.path,
+            error.detail,
+        )
+    else:
+        logger.warning(
+            "HTTP rejection status=%s method=%s path=%s detail=%s",
+            error.status_code,
+            request.method,
+            request.url.path,
+            error.detail,
+        )
+
+    return JSONResponse(
+        status_code=error.status_code,
+        content={"detail": error.detail},
     )
 
 
