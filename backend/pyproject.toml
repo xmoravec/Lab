@@ -1,0 +1,20 @@
+[tool.mypy]
+python_version = "3.13"
+files = ["app"]
+strict = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = [
+  "motor",
+  "motor.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+  "importlib.metadata",
+]
+ignore_missing_imports = false
