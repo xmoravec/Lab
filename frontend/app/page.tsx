@@ -10,7 +10,7 @@ export default async function HomePage() {
   return (
     <main className="mx-auto max-w-5xl px-6 pb-16 pt-10">
       <section className="rounded-3xl border border-zinc-800 bg-zinc-900/80 p-8">
-        <p className="text-sm font-medium uppercase tracking-wider text-cyan-300">Phase 3 · Content Shell</p>
+        <p className="text-sm font-medium uppercase tracking-wider text-cyan-300">Phase 1 · Baseline</p>
         <h1 className="mt-3 text-4xl font-semibold tracking-tight text-zinc-100 sm:text-5xl">
           {home.heroTitle}
         </h1>

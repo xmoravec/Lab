@@ -2,16 +2,16 @@ import { SectionTitle } from "@/components/section-title";
 
 const logEntries = [
   {
-    title: "Phase 1-2 foundation",
-    text: "Dockerized Next.js + FastAPI + Mongo stack, typed contracts, and baseline health checks.",
+    title: "Phase 1 baseline",
+    text: "Dockerized Next.js + FastAPI + Mongo stack with typed contracts and baseline health checks.",
   },
   {
-    title: "Phase 2.5 reliability",
-    text: "Added startup status reporting and improved CORS/env parsing robustness for safer deployment paths.",
+    title: "Catalog moved to Mongo",
+    text: "Games catalog now reads from Mongo with minimal seed data for the Wordle prototype.",
   },
   {
-    title: "Phase 3 content shell",
-    text: "Introduced reusable content endpoints and first multi-page UX flow (Home, Games, Dev Log).",
+    title: "Phase discipline",
+    text: "Scope is intentionally minimal while keeping services and contracts ready for future phases.",
   },
 ];
 

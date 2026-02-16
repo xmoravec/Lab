@@ -9,10 +9,10 @@ router = APIRouter()
 
 
 @router.get("/games", response_model=GamesCatalogResponse)
-def games_catalog() -> GamesCatalogResponse:
-    return get_games_catalog()
+async def games_catalog() -> GamesCatalogResponse:
+    return await get_games_catalog()
 
 
 @router.get("/home", response_model=HomeContentResponse)
-def home_content() -> HomeContentResponse:
-    return get_home_content()
+async def home_content() -> HomeContentResponse:
+    return await get_home_content()

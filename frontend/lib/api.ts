@@ -1,3 +1,5 @@
+import { requestJson } from "@/lib/http-client";
+
 export type HealthResponse = {
   appName: string;
   status: string;
@@ -16,35 +18,16 @@ export type HelloResponse = {
   normalizedName: string;
 };
 
-const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
-  }
-
-  return (await response.json()) as T;
-}
-
 export async function fetchHealth(): Promise<HealthResponse> {
-  return request<HealthResponse>("/api/health");
+  return requestJson<HealthResponse>("/api/health");
 }
 
 export async function fetchDbPing(): Promise<DatabasePingResponse> {
-  return request<DatabasePingResponse>("/api/db/ping");
+  return requestJson<DatabasePingResponse>("/api/db/ping");
 }
 
 export async function postHello(name: string): Promise<HelloResponse> {
-  return request<HelloResponse>("/api/hello", {
+  return requestJson<HelloResponse>("/api/hello", {
     method: "POST",
     body: JSON.stringify({ name }),
   });

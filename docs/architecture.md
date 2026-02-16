@@ -9,7 +9,7 @@ The Playground (Lab) is a Docker-first monorepo for browser game experiments wit
 - Database: MongoDB
 - Orchestration: Docker Compose
 
-Current implementation target is a stable local development baseline (phases 1, 2, and 2.5).
+Current implementation target is a stable local development baseline (phase 1).
 
 ## Repository layout
 
@@ -73,7 +73,7 @@ Current implementation target is a stable local development baseline (phases 1, 
 - Shutdown: close client cleanly
 - Connection state is tracked and exposed through health/ping behavior
 
-### Status reporting (`phase 2.5`)
+### Status reporting
 
 - `report_status` in `app/services/status_reporter.py`
 - Runs once on startup after Mongo connection attempt
@@ -86,14 +86,17 @@ Current implementation target is a stable local development baseline (phases 1, 
 
 This gives a deterministic “ready” signal and a reusable function for future diagnostics.
 
+### Catalog data source
+
+- Catalog data is sourced from MongoDB collection `games`.
+- Phase-1 behavior ensures one minimal seed document exists for the Wordle prototype.
+- API responses are validated through Pydantic schemas before returning to clients.
+
 ## Frontend architecture
 
 - App Router structure under `frontend/app/`
 - Typed API client under `frontend/lib/api.ts`
-- Home page is a minimal full-stack smoke UI:
-  - backend health status
-  - Mongo connectivity status
-  - validated hello request/response demo
+- Home page is a minimal phase-1 shell using backend-sourced content.
 
 ## API contract and Python-JS interoperability
 
@@ -152,13 +155,13 @@ This gives a deterministic “ready” signal and a reusable function for future
 
 - Dockerized monorepo baseline with hot reload
 - FastAPI + Mongo startup/shutdown integration
-- CORS-safe config parsing
+- Mongo-backed game catalog (collection: `games`)
 - Typed Next.js frontend and typed API client
 - Startup-ready structured status reporting
 
 ## Near-term roadmap
 
-1. Phase 3: basic multi-page shell (Home/Games/Dev Log/navigation)
-2. Phase 4: UI refinement + first complete REST Wordle game
-3. Phase 5: product/content pass and feature prioritization
-4. Phase 6: auth/accounts/history/leaderboards
+1. Extend catalog beyond single seeded Wordle document
+2. Add first complete REST Wordle game flow
+3. Introduce tests and CI checks in later phases
+4. Add auth/accounts/history/leaderboards
