@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+
+import { SiteHeader } from "@/components/site-header";
+
 import "./globals.css";
 
 export const metadata = {
@@ -11,7 +14,11 @@ export default function RootLayout({
 }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="en">
-      <body className="bg-zinc-950 text-zinc-100 antialiased">{children}</body>
+      <body className="min-h-screen bg-zinc-950 text-zinc-100 antialiased">
+        <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_20%_10%,rgba(168,85,247,0.2),transparent_30%),radial-gradient(circle_at_80%_20%,rgba(34,211,238,0.18),transparent_30%)]" />
+        <SiteHeader />
+        {children}
+      </body>
     </html>
   );
 }

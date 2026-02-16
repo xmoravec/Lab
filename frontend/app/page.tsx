@@ -1,103 +1,49 @@
-"use client";
+import Link from "next/link";
 
-import type { ChangeEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { GameCard } from "@/components/game-card";
+import { SectionTitle } from "@/components/section-title";
+import { fetchHomeContent } from "@/lib/content-api";
 
-import {
-  fetchDbPing,
-  fetchHealth,
-  postHello,
-  type DatabasePingResponse,
-  type HealthResponse,
-} from "@/lib/api";
-
-export default function HomePage() {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [dbPing, setDbPing] = useState<DatabasePingResponse | null>(null);
-  const [name, setName] = useState("Lab Builder");
-  const [helloMessage, setHelloMessage] = useState<string>("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>("");
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const [healthData, dbData] = await Promise.all([fetchHealth(), fetchDbPing()]);
-      setHealth(healthData);
-      setDbPing(dbData);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Unknown error");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const statusLabel = useMemo(() => {
-    if (loading) return "Loading...";
-    if (error) return `Error: ${error}`;
-    return "Connected";
-  }, [loading, error]);
+export default async function HomePage() {
+  const home = await fetchHomeContent();
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <h1 className="text-3xl font-bold">The Playground (Lab)</h1>
-      <p className="mt-2 text-zinc-300">
-        Phase 1/2 baseline: Next.js frontend + FastAPI backend + MongoDB.
-      </p>
+    <main className="mx-auto max-w-5xl px-6 pb-16 pt-10">
+      <section className="rounded-3xl border border-zinc-800 bg-zinc-900/80 p-8">
+        <p className="text-sm font-medium uppercase tracking-wider text-cyan-300">Phase 3 · Content Shell</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-tight text-zinc-100 sm:text-5xl">
+          {home.heroTitle}
+        </h1>
+        <p className="mt-4 max-w-2xl text-zinc-300">{home.heroSubtitle}</p>
 
-      <section className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <h2 className="text-xl font-semibold">Stack Status</h2>
-        <p className="mt-2 text-sm text-zinc-300">{statusLabel}</p>
-
-        <div className="mt-4 space-y-2 text-sm">
-          <p>Backend health: {health?.status ?? "-"}</p>
-          <p>Mongo connected: {String(dbPing?.mongoConnected ?? health?.mongoConnected ?? false)}</p>
-          <p>Mongo database: {health?.mongoDatabase ?? "-"}</p>
+        <div className="mt-6 flex flex-wrap gap-2">
+          {home.highlights.map((highlight) => (
+            <span
+              key={highlight}
+              className="rounded-full border border-zinc-700 bg-zinc-950/70 px-3 py-1 text-xs text-zinc-300"
+            >
+              {highlight}
+            </span>
+          ))}
         </div>
-
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          className="mt-4 rounded bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-300"
-        >
-          Refresh status
-        </button>
       </section>
 
-      <section className="mt-6 rounded-lg border border-zinc-800 bg-zinc-900 p-4">
-        <h2 className="text-xl font-semibold">Pydantic Request Validation Demo</h2>
-        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <input
-            value={name}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setName(event.target.value)}
-            className="w-full rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-            placeholder="Enter your name"
+      <section className="mt-10">
+        <div className="mb-4 flex items-end justify-between gap-4">
+          <SectionTitle
+            title="Featured Games"
+            subtitle="A rotating set of experiments. First up: Wordle prototype."
           />
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const result = await postHello(name);
-                setHelloMessage(result.message);
-              } catch (requestError) {
-                setHelloMessage(
-                  requestError instanceof Error ? requestError.message : "Request failed",
-                );
-              }
-            }}
-            className="rounded bg-emerald-400 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-emerald-300"
-          >
-            Send
-          </button>
+          <Link href="/games" className="text-sm text-fuchsia-300 hover:text-fuchsia-200">
+            Browse all games
+          </Link>
         </div>
 
-        <p className="mt-3 text-sm text-zinc-300">{helloMessage || "No request yet."}</p>
+        <div className="grid gap-4 md:grid-cols-2">
+          {home.featuredGames.map((game) => (
+            <GameCard key={game.slug} game={game} compact />
+          ))}
+        </div>
       </section>
     </main>
   );
