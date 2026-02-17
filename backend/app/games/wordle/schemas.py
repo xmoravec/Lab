@@ -26,6 +26,7 @@ class TileState(str, Enum):
     CORRECT = "correct"
 
 
+
 class GuessEvaluation(CamelModel):
     letter: str = Field(min_length=1, max_length=1)
     state: TileState

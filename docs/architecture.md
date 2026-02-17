@@ -146,6 +146,8 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Shared game cards expose clickable game titles and a prominent playable CTA for fast entry into active games.
 - Account pages (`/account/sign-in`, `/account/sign-up`) provide credentials onboarding and Google auth handoff.
 - Leaderboards page (`/leaderboards`) features podium and full ranking table.
+- Tools index page (`/tools`) provides a catalog of utility experiences.
+- Wordle Solver tool UI is served at `/tools/wordle_solver` with multi-row green/yellow/gray clue inputs, ranked suggestions, and candidate previews.
 - Dev Log page has been removed from the product navigation and route surface.
 - Wordle UI is encapsulated under `frontend/app/games/wordle/` and now consumes authenticated Next.js proxy routes.
 - Wordle pre-game menu exposes a subtle board-width mode control (`Classic (5)` default, `Auto` lab mode) while keeping 5-letter gameplay as the primary experience.
@@ -170,6 +172,9 @@ This gives a deterministic “ready” signal and a reusable function for future
   - Reveals one target letter-position for an active game and marks the game as hint-used.
 - `POST /api/games/wordle/reveal-answer`
   - Admin-only action to reveal answer by `gameId` (cross-user scope) without mutating win/loss state.
+- `POST /api/tools/wordle_solver/solve`
+  - Public tools endpoint under dedicated backend module `app/tools/wordle_solver/`.
+  - Applies provided green/yellow/gray clue-row constraints, rejects contradictory clues, and returns matching candidate count, ranked next-word suggestions, and a candidate preview list.
 
 ## Auth and leaderboard APIs
 

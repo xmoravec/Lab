@@ -51,6 +51,12 @@ export default async function HomePage() {
           >
             Browse all games
           </Link>
+          <Link
+            href="/tools"
+            className="rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-5 py-4 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+          >
+            Open Tools (Wordle Solver)
+          </Link>
         </div>
 
         <div className="mt-6 flex flex-wrap gap-2">
@@ -110,6 +116,22 @@ export default async function HomePage() {
               className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-2 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-500/20"
             >
               Open leaderboards
+            </Link>
+          </div>
+        </article>
+
+        <article className="rounded-2xl border border-cyan-500/40 bg-cyan-500/10 p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-300">New Tool</p>
+          <h2 className="mt-2 text-xl font-semibold text-cyan-50">Wordle Solver Lab</h2>
+          <p className="mt-2 text-sm text-cyan-100/85">
+            Paste your guess feedback grid and get ranked next-word suggestions with candidate narrowing.
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/tools"
+              className="rounded-lg border border-cyan-300/60 bg-cyan-300/20 px-4 py-2 text-sm font-semibold text-cyan-50 transition hover:bg-cyan-300/30"
+            >
+              Try the solver
             </Link>
           </div>
         </article>

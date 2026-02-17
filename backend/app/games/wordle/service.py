@@ -205,6 +205,19 @@ def is_allowed_guess(guess: str, difficulty: WordleDifficulty) -> bool:
     return guess in context["allowed_guesses"]
 
 
+def _pool_for_difficulty(difficulty: WordleDifficulty) -> list[str]:
+    context = _word_bank_context()
+    return cast(list[str], context["pools"][difficulty])
+
+
+def get_word_bank_context() -> dict[str, Any]:
+    return _word_bank_context()
+
+
+def get_words_for_difficulty(difficulty: WordleDifficulty) -> list[str]:
+    return _pool_for_difficulty(difficulty)
+
+
 def _rejected_guess_response(
     *,
     game_document: dict[str, Any],
@@ -482,7 +495,6 @@ class WordleService:
                 request.game_id,
             )
             _raise_service_error(status_code=500, message="Unexpected error while revealing answer")
-
 
 wordle_service = WordleService()
 

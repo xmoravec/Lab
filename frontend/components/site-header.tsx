@@ -8,6 +8,7 @@ const ADMIN_MODE_COOKIE_NAME = "lab_admin_mode";
 const navItems = [
   { href: "/", label: "Home" },
   { href: "/games", label: "Games" },
+  { href: "/tools", label: "Tools" },
   { href: "/leaderboards", label: "Leaderboards" },
 ];
 
