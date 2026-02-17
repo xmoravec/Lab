@@ -76,6 +76,7 @@ Current implementation target is a stable local development baseline (phase 1).
 - Credentials login uses hashed password verification (`bcrypt`) in backend service layer.
 - OAuth login (Google) is handled by NextAuth and linked/upserted to backend user documents.
 - Frontend session uses NextAuth JWT strategy; backend remains authoritative for account persistence.
+- Session role fields (including admin state) are periodically refreshed from backend account data (`/api/auth/me`) to avoid stale JWT-only role snapshots after DB role changes.
 
 ### Mongo lifecycle
 
@@ -117,11 +118,22 @@ This gives a deterministic “ready” signal and a reusable function for future
   - `extended`: top ~8k five-letter words
 - Primary dictionary source is `wordfreq` (`top_n_list`) via direct top-level import.
 - If dictionary sourcing fails, the backend uses a vetted fallback list and surfaces explicit limited-mode metadata (`limitedWordBank`, `wordBankNotice`) to frontend menu and gameplay responses.
+- Active games support one optional hint action (`/api/games/wordle/hint`) that reveals one target-letter position and marks the game as `hintUsed`.
+- Admin users (`users.is_admin = true`) can reveal the answer without ending the game via `/api/games/wordle/reveal-answer`.
+- Admin-only actions also require explicit admin mode enablement from the frontend header toggle. The toggle state is held in an HttpOnly cookie and forwarded as trusted internal header `x-admin-mode: on`.
 
 ### Leaderboards module
 
 - Public leaderboard endpoint is exposed under `/api/leaderboards/{gameSlug}`.
-- Current implementation supports `wordle` with ELO-style ranking from wins, losses, attempts, and play volume.
+- Current implementation supports `wordle` with rules-based per-game Elo deltas:
+  - win on guess 1: +5
+  - win on guess 2: +3
+  - win on guess 3: +1
+  - win on guess 4: +0
+  - win on guess 5: -1
+  - win on guess 6: -2
+  - loss: -3
+  - any game with `hintUsed=true`: +0 (no Elo change)
 - Designed for extension to future game modules through service-level game-specific ranking strategies.
 
 ## Frontend architecture
@@ -150,6 +162,10 @@ This gives a deterministic “ready” signal and a reusable function for future
   - Starts a new game or resumes an existing in-progress game for the authenticated user.
 - `POST /api/games/wordle/guess`
   - Validates and evaluates a guess, persists attempt, and returns updated personalized game state.
+- `POST /api/games/wordle/hint`
+  - Reveals one target letter-position for an active game and marks the game as hint-used.
+- `POST /api/games/wordle/reveal-answer`
+  - Admin-only action to reveal answer for an in-progress game without mutating win/loss state.
 
 ## Auth and leaderboard APIs
 

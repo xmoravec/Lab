@@ -21,7 +21,11 @@ from app.games.wordle.schemas import (
     WordleDifficulty,
     WordleGameState,
     WordleGameStatus,
+    WordleHintRequest,
+    WordleHintResponse,
     WordleMenuResponse,
+    WordleRevealAnswerRequest,
+    WordleRevealAnswerResponse,
 )
 
 MAX_ATTEMPTS = 6
@@ -239,6 +243,7 @@ def _raise_service_error(
 
 def _to_game_state(game_document: dict[str, Any], include_answer: bool) -> WordleGameState:
     word_bank_context = _word_bank_context()
+    should_include_answer = include_answer or bool(game_document.get("admin_answer_revealed", False))
     board = [
         GuessRecord(
             guess=attempt["guess"],
@@ -261,7 +266,11 @@ def _to_game_state(game_document: dict[str, Any], include_answer: bool) -> Wordl
         board=board,
         started_at=game_document["started_at"],
         completed_at=game_document["completed_at"],
-        answer=game_document["target_word"] if include_answer else None,
+        answer=game_document["target_word"] if should_include_answer else None,
+        hint_used=bool(game_document.get("hint_used", False)),
+        hint_letter_index=game_document.get("hint_letter_index"),
+        hint_letter=game_document.get("hint_letter"),
+        admin_answer_revealed=bool(game_document.get("admin_answer_revealed", False)),
         word_bank_source=word_bank_context["source"],
         limited_word_bank=word_bank_context["limited_word_bank"],
         word_bank_notice=word_bank_context["notice"],
@@ -406,5 +415,84 @@ class WordleService:
             )
             _raise_service_error(status_code=500, message="Unexpected error while evaluating guess")
 
+    async def request_hint(self, user_id: str, request: WordleHintRequest) -> WordleHintResponse:
+        try:
+            game_document = await wordle_repository.get_game(request.game_id, user_id=user_id)
+            if game_document is None:
+                _raise_service_error(status_code=404, message="Game not found", game_id=request.game_id)
+
+            status = WordleGameStatus(game_document["status"])
+            if status != WordleGameStatus.IN_PROGRESS:
+                return WordleHintResponse(
+                    accepted=False,
+                    message="Hints are only available during active games",
+                    game=_to_game_state(game_document, include_answer=True),
+                )
+
+            if bool(game_document.get("hint_used", False)):
+                return WordleHintResponse(
+                    accepted=False,
+                    message="Hint already used for this game",
+                    game=_to_game_state(game_document, include_answer=False),
+                )
+
+            revealed_index = choice(list(range(WORD_LENGTH)))
+            revealed_letter = str(game_document["target_word"])[revealed_index]
+            game_document["hint_used"] = True
+            game_document["hint_letter_index"] = revealed_index
+            game_document["hint_letter"] = revealed_letter
+
+            await wordle_repository.save_game(game_document)
+
+            return WordleHintResponse(
+                accepted=True,
+                message=f"Hint: letter {revealed_index + 1} is '{revealed_letter.upper()}'",
+                game=_to_game_state(game_document, include_answer=False),
+            )
+        except WordleServiceError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Wordle hint processing failed user_id=%s game_id=%s",
+                user_id,
+                request.game_id,
+            )
+            _raise_service_error(status_code=500, message="Unexpected error while generating hint")
+
+    async def reveal_answer(self, user_id: str, request: WordleRevealAnswerRequest) -> WordleRevealAnswerResponse:
+        try:
+            game_document = await wordle_repository.get_game(request.game_id, user_id=user_id)
+            if game_document is None:
+                _raise_service_error(status_code=404, message="Game not found", game_id=request.game_id)
+
+            game_document["admin_answer_revealed"] = True
+            await wordle_repository.save_game(game_document)
+
+            return WordleRevealAnswerResponse(
+                accepted=True,
+                message="Answer revealed for admin",
+                game=_to_game_state(game_document, include_answer=True),
+            )
+        except WordleServiceError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Wordle admin reveal failed admin_user_id=%s game_id=%s",
+                user_id,
+                request.game_id,
+            )
+            _raise_service_error(status_code=500, message="Unexpected error while revealing answer")
+
 
 wordle_service = WordleService()
+
+
+async def request_wordle_hint(user_id: str, request: WordleHintRequest) -> WordleHintResponse:
+    return await wordle_service.request_hint(user_id=user_id, request=request)
+
+
+async def reveal_wordle_answer(
+    user_id: str,
+    request: WordleRevealAnswerRequest,
+) -> WordleRevealAnswerResponse:
+    return await wordle_service.reveal_answer(user_id=user_id, request=request)

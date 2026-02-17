@@ -33,6 +33,7 @@ class AuthUserResponse(CamelModel):
     display_name: str
     avatar_url: str | None = None
     created_at: datetime
+    is_admin: bool = False
 
 
 class RegisterAccountResponse(CamelModel):

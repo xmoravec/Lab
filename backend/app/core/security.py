@@ -20,6 +20,7 @@ class UserIdentity:
 class PrincipalIdentity:
     principal_id: str
     is_guest: bool
+    admin_mode_enabled: bool = False
     username: str | None = None
     email: str | None = None
 
@@ -70,11 +71,13 @@ def require_principal_identity(
     x_user_name: str | None = Header(default=None),
     x_user_email: str | None = Header(default=None),
     x_guest_id: str | None = Header(default=None),
+    x_admin_mode: str | None = Header(default=None),
 ) -> PrincipalIdentity:
     if x_user_id and x_user_name and x_user_email:
         return PrincipalIdentity(
             principal_id=x_user_id.strip(),
             is_guest=False,
+            admin_mode_enabled=bool(x_admin_mode and x_admin_mode.strip().lower() == "on"),
             username=x_user_name.strip(),
             email=x_user_email.strip().lower(),
         )

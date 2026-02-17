@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 
 import { auth, signOut } from "@/auth";
+
+const ADMIN_MODE_COOKIE_NAME = "lab_admin_mode";
 
 const navItems = [
   { href: "/", label: "Home" },
@@ -11,6 +14,9 @@ const navItems = [
 
 export async function SiteHeader() {
   const session = await auth();
+  const cookieStore = await cookies();
+  const isAdmin = Boolean(session?.user?.isAdmin);
+  const adminModeEnabled = isAdmin && cookieStore.get(ADMIN_MODE_COOKIE_NAME)?.value === "on";
 
   return (
     <header className="sticky top-0 z-20 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur">
@@ -37,9 +43,47 @@ export async function SiteHeader() {
               <span className="hidden rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-300 sm:inline-flex">
                 @{session.user.username}
               </span>
+              {isAdmin ? (
+                <form
+                  action={async () => {
+                    "use server";
+                    const activeSession = await auth();
+                    if (!activeSession?.user?.id || !activeSession.user.isAdmin) {
+                      return;
+                    }
+
+                    const activeCookies = await cookies();
+                    activeCookies.set(ADMIN_MODE_COOKIE_NAME, adminModeEnabled ? "off" : "on", {
+                      httpOnly: true,
+                      sameSite: "lax",
+                      secure: process.env.NODE_ENV === "production",
+                      path: "/",
+                    });
+                  }}
+                >
+                  <button
+                    type="submit"
+                    className={`rounded-md border px-3 py-2 text-xs font-medium transition ${
+                      adminModeEnabled
+                        ? "border-emerald-500/60 text-emerald-200 hover:bg-emerald-500/20"
+                        : "border-amber-500/60 text-amber-200 hover:bg-amber-500/20"
+                    }`}
+                    title={adminModeEnabled ? "Click to disable admin mode" : "Click to enable admin mode"}
+                  >
+                    Admin {adminModeEnabled ? "ON" : "OFF"}
+                  </button>
+                </form>
+              ) : null}
               <form
                 action={async () => {
                   "use server";
+                  const activeCookies = await cookies();
+                  activeCookies.set(ADMIN_MODE_COOKIE_NAME, "off", {
+                    httpOnly: true,
+                    sameSite: "lax",
+                    secure: process.env.NODE_ENV === "production",
+                    path: "/",
+                  });
                   await signOut({ redirectTo: "/" });
                 }}
               >

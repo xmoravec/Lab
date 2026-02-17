@@ -26,6 +26,10 @@ export type WordleGameState = {
   startedAt: string;
   completedAt?: string | null;
   answer?: string | null;
+  hintUsed: boolean;
+  hintLetterIndex?: number | null;
+  hintLetter?: string | null;
+  adminAnswerRevealed: boolean;
   wordBankSource: "wordfreq" | "fallback";
   limitedWordBank: boolean;
   wordBankNotice?: string | null;
@@ -45,6 +49,18 @@ export type StartWordleResponse = {
 };
 
 export type GuessWordleResponse = {
+  game: WordleGameState;
+  accepted: boolean;
+  message: string;
+};
+
+export type WordleHintResponse = {
+  game: WordleGameState;
+  accepted: boolean;
+  message: string;
+};
+
+export type WordleRevealAnswerResponse = {
   game: WordleGameState;
   accepted: boolean;
   message: string;
@@ -71,5 +87,19 @@ export async function submitWordleGuess(
   return requestAppJson<GuessWordleResponse>("/api/wordle/guess", {
     method: "POST",
     body: JSON.stringify({ gameId, guess }),
+  });
+}
+
+export async function requestWordleHint(gameId: string): Promise<WordleHintResponse> {
+  return requestAppJson<WordleHintResponse>("/api/wordle/hint", {
+    method: "POST",
+    body: JSON.stringify({ gameId }),
+  });
+}
+
+export async function revealWordleAnswer(gameId: string): Promise<WordleRevealAnswerResponse> {
+  return requestAppJson<WordleRevealAnswerResponse>("/api/wordle/reveal-answer", {
+    method: "POST",
+    body: JSON.stringify({ gameId }),
   });
 }

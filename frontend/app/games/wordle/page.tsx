@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   fetchWordleMenu,
+  requestWordleHint,
+  revealWordleAnswer,
   startWordleGame,
   submitWordleGuess,
   type TileState,
@@ -115,10 +117,41 @@ export default function WordlePage() {
   const [previousGames, setPreviousGames] = useState<WordleGameState[]>([]);
   const [currentGuess, setCurrentGuess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isHinting, setIsHinting] = useState(false);
+  const [isRevealing, setIsRevealing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [notice, setNotice] = useState("Choose a difficulty and hit Play.");
   const [wordBankNotice, setWordBankNotice] = useState<string | null>(null);
   const [shakeTick, setShakeTick] = useState(0);
   const [keyPulse, setKeyPulse] = useState("");
+
+  useEffect(() => {
+    let disposed = false;
+
+    async function loadSessionRole() {
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as { user?: { isAdmin?: boolean } } | null;
+        if (!disposed) {
+          setIsAdmin(Boolean(payload?.user?.isAdmin));
+        }
+      } catch {
+        if (!disposed) {
+          setIsAdmin(false);
+        }
+      }
+    }
+
+    void loadSessionRole();
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -302,6 +335,46 @@ export default function WordlePage() {
     setTimeout(() => setKeyPulse(""), 140);
   }, [currentGame, submitGuess, wordLength]);
 
+  const handleHint = useCallback(async () => {
+    if (!currentGame || currentGame.status !== "in-progress" || isHinting) {
+      return;
+    }
+
+    setIsHinting(true);
+    try {
+      const response = await requestWordleHint(currentGame.gameId);
+      setCurrentGame(response.game);
+      setNotice(response.message);
+      setWordBankNotice(response.game.wordBankNotice ?? null);
+      await refreshHistory();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to request hint";
+      setNotice(message);
+    } finally {
+      setIsHinting(false);
+    }
+  }, [currentGame, isHinting, refreshHistory]);
+
+  const handleAdminReveal = useCallback(async () => {
+    if (!currentGame || !isAdmin || isRevealing) {
+      return;
+    }
+
+    setIsRevealing(true);
+    try {
+      const response = await revealWordleAnswer(currentGame.gameId);
+      setCurrentGame(response.game);
+      setNotice(response.message);
+      setWordBankNotice(response.game.wordBankNotice ?? null);
+      await refreshHistory();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to reveal answer";
+      setNotice(message);
+    } finally {
+      setIsRevealing(false);
+    }
+  }, [currentGame, isAdmin, isRevealing, refreshHistory]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const key = event.key;
@@ -424,6 +497,24 @@ export default function WordlePage() {
                 <div className="flex gap-2">
                   <button
                     type="button"
+                    onClick={() => void handleHint()}
+                    disabled={isHinting || currentGame.hintUsed || currentGame.status !== "in-progress"}
+                    className="rounded-md border border-amber-500/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isHinting ? "Hint..." : currentGame.hintUsed ? "Hint used" : "Use hint"}
+                  </button>
+                  {isAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleAdminReveal()}
+                      disabled={isRevealing || currentGame.status !== "in-progress"}
+                      className="rounded-md border border-rose-500/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isRevealing ? "Reveal..." : "Admin reveal"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
                     onClick={() => void handleStart(true)}
                     className="rounded-md border border-zinc-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-300 hover:bg-zinc-800"
                   >
@@ -431,6 +522,19 @@ export default function WordlePage() {
                   </button>
                 </div>
               </div>
+
+              {currentGame.hintUsed && currentGame.hintLetter && typeof currentGame.hintLetterIndex === "number" ? (
+                <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  Hint used: letter {currentGame.hintLetterIndex + 1} is {currentGame.hintLetter.toUpperCase()}.
+                  This game awards no ELO.
+                </p>
+              ) : null}
+
+              {isAdmin && currentGame.adminAnswerRevealed && currentGame.answer ? (
+                <p className="mb-4 rounded-md border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
+                  Admin reveal active: answer is <span className="font-black tracking-widest">{currentGame.answer.toUpperCase()}</span>
+                </p>
+              ) : null}
 
               <div className="mx-auto max-w-md space-y-2">
                 {boardRows.map((row, rowIndex) => {

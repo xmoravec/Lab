@@ -37,7 +37,10 @@ class LeaderboardService:
         pipeline: list[dict[str, Any]] = [
             {
                 "$match": {
-                    "user_id": {"$type": "string", "$ne": ""},
+                    "$and": [
+                        {"user_id": {"$type": "string", "$ne": ""}},
+                        {"user_id": {"$not": {"$regex": r"^guest:"}}},
+                    ],
                 },
             },
             {
@@ -53,6 +56,77 @@ class LeaderboardService:
                                 {"$ifNull": ["$attempts_used", 0]},
                                 0,
                             ],
+                        },
+                    },
+                    "elo_delta_sum": {
+                        "$sum": {
+                            "$switch": {
+                                "branches": [
+                                    {
+                                        "case": {"$eq": [{"$ifNull": ["$hint_used", False]}, True]},
+                                        "then": 0,
+                                    },
+                                    {
+                                        "case": {"$eq": ["$status", "lost"]},
+                                        "then": -3,
+                                    },
+                                    {
+                                        "case": {
+                                            "$and": [
+                                                {"$eq": ["$status", "won"]},
+                                                {"$eq": ["$attempts_used", 1]},
+                                            ],
+                                        },
+                                        "then": 5,
+                                    },
+                                    {
+                                        "case": {
+                                            "$and": [
+                                                {"$eq": ["$status", "won"]},
+                                                {"$eq": ["$attempts_used", 2]},
+                                            ],
+                                        },
+                                        "then": 3,
+                                    },
+                                    {
+                                        "case": {
+                                            "$and": [
+                                                {"$eq": ["$status", "won"]},
+                                                {"$eq": ["$attempts_used", 3]},
+                                            ],
+                                        },
+                                        "then": 1,
+                                    },
+                                    {
+                                        "case": {
+                                            "$and": [
+                                                {"$eq": ["$status", "won"]},
+                                                {"$eq": ["$attempts_used", 4]},
+                                            ],
+                                        },
+                                        "then": 0,
+                                    },
+                                    {
+                                        "case": {
+                                            "$and": [
+                                                {"$eq": ["$status", "won"]},
+                                                {"$eq": ["$attempts_used", 5]},
+                                            ],
+                                        },
+                                        "then": -1,
+                                    },
+                                    {
+                                        "case": {
+                                            "$and": [
+                                                {"$eq": ["$status", "won"]},
+                                                {"$eq": ["$attempts_used", 6]},
+                                            ],
+                                        },
+                                        "then": -2,
+                                    },
+                                ],
+                                "default": 0,
+                            },
                         },
                     },
                 },
@@ -80,6 +154,7 @@ class LeaderboardService:
                     "wins": 1,
                     "losses": 1,
                     "total_attempts_on_wins": 1,
+                    "elo_delta_sum": 1,
                 },
             },
         ]
@@ -102,6 +177,7 @@ class LeaderboardService:
             wins = int(row.get("wins") or 0)
             losses = int(row.get("losses") or 0)
             total_attempts_on_wins = int(row.get("total_attempts_on_wins") or 0)
+            elo_delta_sum = int(row.get("elo_delta_sum") or 0)
 
             win_rate = wins / games_played
             average_attempts = (
@@ -110,12 +186,7 @@ class LeaderboardService:
                 else 0.0
             )
 
-            elo_score = self._calculate_elo_score(
-                games_played=games_played,
-                wins=wins,
-                losses=losses,
-                average_attempts=average_attempts,
-            )
+            elo_score = 1000 + elo_delta_sum
 
             candidates.append(
                 {
@@ -163,12 +234,11 @@ class LeaderboardService:
 
     @staticmethod
     def _calculate_elo_score(*, games_played: int, wins: int, losses: int, average_attempts: float) -> int:
-        base_score = 1000
-        win_component = wins * 32
-        loss_component = losses * 10
-        volume_bonus = min(games_played, 100) * 2
-        attempts_penalty = int(max(average_attempts - 3.5, 0) * 18)
-        return base_score + win_component + volume_bonus - loss_component - attempts_penalty
+        del games_played
+        del wins
+        del losses
+        del average_attempts
+        return 1000
 
 
 leaderboard_service = LeaderboardService()

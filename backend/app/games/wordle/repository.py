@@ -52,6 +52,10 @@ class WordleRepository:
             "attempts_used": 0,
             "word_length": word_length,
             "attempts": [],
+            "hint_used": False,
+            "hint_letter_index": None,
+            "hint_letter": None,
+            "admin_answer_revealed": False,
             "started_at": now,
             "completed_at": None,
         }
