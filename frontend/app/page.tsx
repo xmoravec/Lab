@@ -1,7 +1,9 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { auth } from "@/auth";
 import { GameCard } from "@/components/game-card";
+import { SpotlightVerticalSlideshow, type SpotlightSlide } from "@/components/spotlight-vertical-slideshow";
 import { SectionTitle } from "@/components/section-title";
 import { fetchHomeContent, fetchWordleLeaderboard } from "@/lib/content-api";
 
@@ -14,6 +16,37 @@ export default async function HomePage() {
   const spotlightGame = chessPlayable ?? playableGames[0] ?? home.featuredGames[0] ?? null;
   const upcomingGames = home.featuredGames.filter((game) => game.slug !== spotlightGame?.slug);
   const leaderboardLeader = leaderboard.entries[0] ?? null;
+  const screenshotByGameSlug: Record<string, string> = {
+    chess: "/assets/screenshots/chess.png",
+    wordle: "/assets/screenshots/wordle.png",
+  };
+  const spotlightSlides: SpotlightSlide[] = [
+    ...playableGames
+      .filter((game) => Boolean(screenshotByGameSlug[game.slug]))
+      .map((game) => ({
+        id: `game-${game.slug}`,
+        kind: "game" as const,
+        title: game.name,
+        summary: game.summary,
+        href:
+          game.slug === "wordle"
+            ? "/games/wordle"
+            : game.slug === "chess"
+              ? "/games/chess"
+              : `/games#${game.slug}`,
+        screenshotPath: screenshotByGameSlug[game.slug],
+        statusLabel: "Playable",
+      })),
+    {
+      id: "tool-wordle-solver",
+      kind: "tool",
+      title: "Wordle Solver",
+      summary: "Apply clue rows and get ranked candidate suggestions with fast narrowing.",
+      href: "/tools/wordle_solver",
+      screenshotPath: "/assets/screenshots/wordle_solver.png",
+      statusLabel: "Tool · Live",
+    },
+  ];
 
   return (
     <main className="mx-auto max-w-6xl px-6 pb-16 pt-10">
@@ -83,10 +116,10 @@ export default async function HomePage() {
           <div className="mb-4 flex items-end justify-between gap-4">
             <SectionTitle
               title="Spotlight"
-              subtitle="Featured playable experience from the Lab."
+              subtitle="Featured games and tools in a simple horizontal carousel."
             />
           </div>
-          <GameCard game={spotlightGame} featured />
+          <SpotlightVerticalSlideshow slides={spotlightSlides} />
         </section>
       ) : null}
 
@@ -133,6 +166,17 @@ export default async function HomePage() {
           <p className="mt-2 text-sm text-cyan-100/85">
             Paste your guess feedback grid and get ranked next-word suggestions with candidate narrowing.
           </p>
+          <div className="mt-4 overflow-hidden rounded-xl border border-cyan-300/30 bg-zinc-950/40">
+            <div className="relative aspect-video w-full">
+              <Image
+                src="/assets/screenshots/wordle_solver.png"
+                alt="Wordle Solver screenshot"
+                fill
+                sizes="(min-width: 768px) 420px, 100vw"
+                className="object-cover"
+              />
+            </div>
+          </div>
           <div className="mt-4">
             <Link
               href="/tools"

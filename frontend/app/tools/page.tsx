@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { SectionTitle } from "@/components/section-title";
 
@@ -8,6 +9,7 @@ const tools = [
     summary: "Apply green/yellow/gray clues and get ranked candidate suggestions from the same dictionaries as gameplay.",
     status: "live",
     accent: "from-cyan-500 to-fuchsia-500",
+    screenshotPath: "/assets/screenshots/wordle_solver.png",
   },
 ];
 
@@ -56,6 +58,18 @@ export default function ToolsPage() {
                 </Link>
               </h3>
               <p className="mt-2 text-sm leading-relaxed text-zinc-300">{tool.summary}</p>
+
+              <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950/70">
+                <div className="relative aspect-video w-full">
+                  <Image
+                    src={tool.screenshotPath}
+                    alt={`${tool.name} screenshot`}
+                    fill
+                    sizes="(min-width: 768px) 480px, 100vw"
+                    className="object-cover transition duration-300 hover:scale-[1.02]"
+                  />
+                </div>
+              </div>
 
               <div className="mt-5 flex items-center justify-end text-sm text-zinc-400">
                 <Link

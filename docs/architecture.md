@@ -165,8 +165,11 @@ This gives a deterministic “ready” signal and a reusable function for future
 - App Router structure under `frontend/app/`
 - Typed API clients under `frontend/lib/`
 - Home page features a hero, spotlight game, and scalable experiment sections using backend-sourced content.
+- Home page spotlight is presented as a horizontal carousel that rotates through available playable games and live tools with screenshot-led cards.
+- A global footer is rendered from root layout across the app, with prominent author attribution (`xmoravec`), personal website reference (`www.xmoravec.com`), and planned deployment domain (`lab.xmoravec.com`).
 - Games page provides a richer catalog view with playable-first grouping and summary stats.
 - Shared game cards expose clickable game titles and a prominent playable CTA for fast entry into active games.
+- Game and tool catalog cards now use curated screenshots from `frontend/public/assets/screenshots/` (`chess.png`, `wordle.png`, `wordle_solver.png`) to improve visual presentation across Home, Games, and Tools pages.
 - Account pages (`/account/sign-in`, `/account/sign-up`) provide credentials onboarding and Google auth handoff.
 - Leaderboards page (`/leaderboards`) features podium and full ranking table.
 - Tools index page (`/tools`) provides a catalog of utility experiences.

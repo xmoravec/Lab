@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import type { GameCard as GameCardModel } from "@/lib/content-api";
@@ -6,6 +7,11 @@ type GameCardProps = {
   game: GameCardModel;
   compact?: boolean;
   featured?: boolean;
+};
+
+const GAME_SCREENSHOT_BY_SLUG: Record<string, string> = {
+  chess: "/assets/screenshots/chess.png",
+  wordle: "/assets/screenshots/wordle.png",
 };
 
 function statusTone(status: string): string {
@@ -42,6 +48,7 @@ export function GameCard({ game, compact = false, featured = false }: GameCardPr
         : `/games#${game.slug}`;
   const playable = game.status.trim().toLowerCase() === "playable";
   const actionLabel = playable ? "Play now" : "View details";
+  const screenshotPath = GAME_SCREENSHOT_BY_SLUG[game.slug] ?? null;
 
   return (
     <article
@@ -62,6 +69,20 @@ export function GameCard({ game, compact = false, featured = false }: GameCardPr
         </Link>
       </h3>
       <p className="mt-2 text-sm leading-relaxed text-zinc-300">{game.summary}</p>
+
+      {screenshotPath ? (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950/70">
+          <div className="relative aspect-video w-full">
+            <Image
+              src={screenshotPath}
+              alt={`${game.name} screenshot`}
+              fill
+              sizes="(min-width: 768px) 480px, 100vw"
+              className="object-cover transition duration-300 group-hover:scale-[1.02]"
+            />
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5 flex items-center justify-end text-sm text-zinc-400">
         {!compact ? (
