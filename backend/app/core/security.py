@@ -25,6 +25,17 @@ class PrincipalIdentity:
     email: str | None = None
 
 
+def _normalized_non_empty(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    return normalized
+
+
 def hash_password(password: str) -> str:
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
     return hashed.decode("utf-8")
@@ -53,16 +64,20 @@ def require_user_identity(
     x_user_name: str | None = Header(default=None),
     x_user_email: str | None = Header(default=None),
 ) -> UserIdentity:
-    if not x_user_id or not x_user_name or not x_user_email:
+    normalized_user_id = _normalized_non_empty(x_user_id)
+    normalized_user_name = _normalized_non_empty(x_user_name)
+    normalized_user_email = _normalized_non_empty(x_user_email)
+
+    if not normalized_user_id or not normalized_user_name or not normalized_user_email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authenticated user headers",
         )
 
     return UserIdentity(
-        user_id=x_user_id.strip(),
-        username=x_user_name.strip(),
-        email=x_user_email.strip().lower(),
+        user_id=normalized_user_id,
+        username=normalized_user_name,
+        email=normalized_user_email.lower(),
     )
 
 
@@ -73,17 +88,21 @@ def require_principal_identity(
     x_guest_id: str | None = Header(default=None),
     x_admin_mode: str | None = Header(default=None),
 ) -> PrincipalIdentity:
-    if x_user_id and x_user_name and x_user_email:
+    normalized_user_id = _normalized_non_empty(x_user_id)
+    normalized_user_name = _normalized_non_empty(x_user_name)
+    normalized_user_email = _normalized_non_empty(x_user_email)
+
+    if normalized_user_id and normalized_user_name and normalized_user_email:
         return PrincipalIdentity(
-            principal_id=x_user_id.strip(),
+            principal_id=normalized_user_id,
             is_guest=False,
             admin_mode_enabled=bool(x_admin_mode and x_admin_mode.strip().lower() == "on"),
-            username=x_user_name.strip(),
-            email=x_user_email.strip().lower(),
+            username=normalized_user_name,
+            email=normalized_user_email.lower(),
         )
 
-    if x_guest_id and x_guest_id.strip():
-        normalized_guest_id = x_guest_id.strip()
+    normalized_guest_id = _normalized_non_empty(x_guest_id)
+    if normalized_guest_id:
         return PrincipalIdentity(
             principal_id=f"guest:{normalized_guest_id}",
             is_guest=True,

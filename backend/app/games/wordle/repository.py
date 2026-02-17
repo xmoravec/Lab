@@ -72,6 +72,14 @@ class WordleRepository:
 
         return await self._collection().find_one({"game_id": game_id, "user_id": user_id})
 
+    async def get_game_for_admin(self, game_id: str) -> dict[str, Any] | None:
+        for guest_bucket in self._guest_games_by_user.values():
+            guest_game = guest_bucket.get(game_id)
+            if guest_game is not None:
+                return guest_game
+
+        return await self._collection().find_one({"game_id": game_id})
+
     async def save_game(self, game_document: dict[str, Any]) -> None:
         user_id = str(game_document["user_id"])
         if self._is_guest_user(user_id):

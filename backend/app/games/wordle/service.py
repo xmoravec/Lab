@@ -461,7 +461,7 @@ class WordleService:
 
     async def reveal_answer(self, user_id: str, request: WordleRevealAnswerRequest) -> WordleRevealAnswerResponse:
         try:
-            game_document = await wordle_repository.get_game(request.game_id, user_id=user_id)
+            game_document = await wordle_repository.get_game_for_admin(request.game_id)
             if game_document is None:
                 _raise_service_error(status_code=404, message="Game not found", game_id=request.game_id)
 

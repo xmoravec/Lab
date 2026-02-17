@@ -20,6 +20,7 @@ import styles from "./wordle.module.css";
 const KEYBOARD_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
 
 type KeyboardLegend = Record<string, TileState>;
+type BoardWidthMode = "classic" | "auto";
 
 const STATE_PRIORITY: Record<TileState, number> = {
   absent: 0,
@@ -120,6 +121,7 @@ export default function WordlePage() {
   const [isHinting, setIsHinting] = useState(false);
   const [isRevealing, setIsRevealing] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [boardWidthMode, setBoardWidthMode] = useState<BoardWidthMode>("classic");
   const [notice, setNotice] = useState("Choose a difficulty and hit Play.");
   const [wordBankNotice, setWordBankNotice] = useState<string | null>(null);
   const [shakeTick, setShakeTick] = useState(0);
@@ -201,6 +203,7 @@ export default function WordlePage() {
   const activeRowIndex = currentGame?.attemptsUsed ?? 0;
   const maxAttempts = currentGame?.maxAttempts ?? 6;
   const wordLength = currentGame?.wordLength ?? 5;
+  const boardColumns = boardWidthMode === "auto" ? wordLength : 5;
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -478,6 +481,35 @@ export default function WordlePage() {
                 ))}
               </div>
 
+              <div className="rounded-xl border border-zinc-800/90 bg-zinc-900/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Board width</p>
+                <p className="mt-1 text-xs text-zinc-500">Classic 5-letter mode is primary. Auto mode follows game word length.</p>
+                <div className="mt-2 inline-flex rounded-lg border border-zinc-700 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setBoardWidthMode("classic")}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                      boardWidthMode === "classic"
+                        ? "bg-zinc-700 text-zinc-100"
+                        : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    }`}
+                  >
+                    Classic (5)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBoardWidthMode("auto")}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                      boardWidthMode === "auto"
+                        ? "bg-zinc-700 text-zinc-100"
+                        : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    }`}
+                  >
+                    Auto
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="button"
                 onClick={() => void handleStart(false)}
@@ -543,7 +575,8 @@ export default function WordlePage() {
                   return (
                     <div
                       key={`${rowIndex}-${shakeTick}`}
-                      className={`grid grid-cols-5 gap-2 ${shouldShake ? styles.rowShake : ""}`}
+                      style={{ gridTemplateColumns: `repeat(${boardColumns}, minmax(0, 1fr))` }}
+                      className={`grid gap-2 ${shouldShake ? styles.rowShake : ""}`}
                     >
                       {row.letters.map((letter, letterIndex) => {
                         const state = row.states[letterIndex];

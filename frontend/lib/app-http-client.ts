@@ -1,9 +1,5 @@
+import { parseApiError } from "@/lib/api-error";
 import { ApiRequestError } from "@/lib/http-client";
-
-type ApiErrorBody = {
-  detail?: string;
-  message?: string;
-};
 
 export async function requestAppJson<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? "GET";
@@ -28,28 +24,15 @@ export async function requestAppJson<T>(path: string, init?: RequestInit): Promi
   }
 
   if (!response.ok) {
-    let message = `Request failed: ${response.status}`;
     let responseBody: string | undefined;
 
     try {
       responseBody = await response.text();
-      if (responseBody) {
-        try {
-          const errorPayload = JSON.parse(responseBody) as ApiErrorBody;
-          if (errorPayload.detail) {
-            message = errorPayload.detail;
-          } else if (errorPayload.message) {
-            message = errorPayload.message;
-          } else {
-            message = `${message} - ${responseBody}`;
-          }
-        } catch {
-          message = `${message} - ${responseBody}`;
-        }
-      }
     } catch {
       // Keep default message when body cannot be read.
     }
+
+    const message = parseApiError(response.status, responseBody);
 
     throw new ApiRequestError({
       message,

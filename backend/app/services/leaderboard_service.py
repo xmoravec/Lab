@@ -232,13 +232,5 @@ class LeaderboardService:
             entries=ranked_entries,
         )
 
-    @staticmethod
-    def _calculate_elo_score(*, games_played: int, wins: int, losses: int, average_attempts: float) -> int:
-        del games_played
-        del wins
-        del losses
-        del average_attempts
-        return 1000
-
 
 leaderboard_service = LeaderboardService()

@@ -101,7 +101,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 ### Catalog data source
 
 - Catalog data is sourced from MongoDB collection `games`.
-- Phase-1 behavior ensures one canonical Wordle seed document exists and stays synchronized with current metadata.
+- Phase-1 behavior seeds/synchronizes one canonical Wordle document once during backend startup (not on catalog reads), reducing write traffic for deployed environments.
 - API responses are validated through Pydantic schemas before returning to clients.
 
 ### Wordle module
@@ -120,6 +120,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - If dictionary sourcing fails, the backend uses a vetted fallback list and surfaces explicit limited-mode metadata (`limitedWordBank`, `wordBankNotice`) to frontend menu and gameplay responses.
 - Active games support one optional hint action (`/api/games/wordle/hint`) that reveals one target-letter position and marks the game as `hintUsed`.
 - Admin users (`users.is_admin = true`) can reveal the answer without ending the game via `/api/games/wordle/reveal-answer`.
+- Admin reveal now resolves by `gameId` across users (including guest in-memory rounds) and requires both admin role and admin-mode toggle.
 - Admin-only actions also require explicit admin mode enablement from the frontend header toggle. The toggle state is held in an HttpOnly cookie and forwarded as trusted internal header `x-admin-mode: on`.
 
 ### Leaderboards module
@@ -145,13 +146,16 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Shared game cards expose clickable game titles and a prominent playable CTA for fast entry into active games.
 - Account pages (`/account/sign-in`, `/account/sign-up`) provide credentials onboarding and Google auth handoff.
 - Leaderboards page (`/leaderboards`) features podium and full ranking table.
+- Dev Log page has been removed from the product navigation and route surface.
 - Wordle UI is encapsulated under `frontend/app/games/wordle/` and now consumes authenticated Next.js proxy routes.
+- Wordle pre-game menu exposes a subtle board-width mode control (`Classic (5)` default, `Auto` lab mode) while keeping 5-letter gameplay as the primary experience.
 
 ### Authenticated proxy routing
 
 - Frontend route handlers under `frontend/app/api/wordle/*` proxy to backend.
 - Proxy layer injects internal shared-secret and authenticated user headers from server-side session.
 - For guest gameplay, proxy routes inject a generated guest session header (`x-guest-id`) bound to a browser-session cookie.
+- Backend identity dependencies normalize and reject blank/whitespace-only identity headers to avoid ambiguous principal resolution.
 - This prevents browser-side header spoofing for personalized game endpoints.
 
 ## Wordle API
@@ -165,7 +169,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - `POST /api/games/wordle/hint`
   - Reveals one target letter-position for an active game and marks the game as hint-used.
 - `POST /api/games/wordle/reveal-answer`
-  - Admin-only action to reveal answer for an in-progress game without mutating win/loss state.
+  - Admin-only action to reveal answer by `gameId` (cross-user scope) without mutating win/loss state.
 
 ## Auth and leaderboard APIs
 

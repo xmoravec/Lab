@@ -27,20 +27,29 @@ def _require_games_collection() -> AsyncIOMotorCollection[dict[str, Any]]:
 
 async def _ensure_seed_data() -> None:
     collection = _require_games_collection()
-    existing_wordle = await collection.find_one({"slug": DEFAULT_WORDLE_GAME["slug"]})
+    await collection.create_index("slug", unique=True, name="games_slug_unique")
+
+    existing_wordle = await collection.find_one(
+        {"slug": DEFAULT_WORDLE_GAME["slug"]},
+        {"_id": 0},
+    )
     if existing_wordle is None:
         await collection.insert_one(DEFAULT_WORDLE_GAME)
         return
 
-    await collection.update_one(
-        {"slug": DEFAULT_WORDLE_GAME["slug"]},
-        {"$set": DEFAULT_WORDLE_GAME},
-    )
+    if existing_wordle != DEFAULT_WORDLE_GAME:
+        await collection.update_one(
+            {"slug": DEFAULT_WORDLE_GAME["slug"]},
+            {"$set": DEFAULT_WORDLE_GAME},
+        )
+
+
+async def ensure_catalog_seed_data() -> None:
+    await _ensure_seed_data()
 
 
 async def _get_game_cards() -> list[GameCard]:
     collection = _require_games_collection()
-    await _ensure_seed_data()
     game_documents = await collection.find({}, {"_id": 0}).to_list(length=100)
     return [GameCard.model_validate(document) for document in game_documents]
 

@@ -9,7 +9,6 @@ const navItems = [
   { href: "/", label: "Home" },
   { href: "/games", label: "Games" },
   { href: "/leaderboards", label: "Leaderboards" },
-  { href: "/dev-log", label: "Dev Log" },
 ];
 
 export async function SiteHeader() {
