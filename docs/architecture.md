@@ -229,6 +229,13 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Standard backend type-check command:
   - `python -m mypy --config-file backend/pyproject.toml backend/app`
 
+### Backend test strategy
+
+- Lean pytest layer lives under `backend/tests/` and is grouped by domain area (`core`, `games`, `tools`, `integration`).
+- Current strategy prioritizes high-value business logic and validation tests over exhaustive route mocking.
+- Live DB coverage is intentionally minimal and includes a smoke test for Mongo user collection read/write sanity.
+- Pytest configuration in `backend/pyproject.toml` enables strict markers and log CLI output for clearer run reporting.
+
 ## Dependency/version strategy
 
 - Docker images track current stable majors:

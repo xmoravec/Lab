@@ -32,3 +32,18 @@ module = [
   "bcrypt.*",
 ]
 ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-ra -vv --strict-markers"
+asyncio_mode = "auto"
+log_cli = true
+log_cli_level = "INFO"
+markers = [
+  "core: core infra/security tests",
+  "games: gameplay module tests",
+  "tools: tools module tests",
+  "integration: integration tests with external systems",
+  "smoke: lightweight smoke tests",
+]

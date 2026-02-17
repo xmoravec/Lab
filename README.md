@@ -21,3 +21,18 @@ Current status: a runnable local baseline is implemented with secure account aut
 ## Documentation
 
 Detailed architecture and implementation notes are in [docs/architecture.md](docs/architecture.md).
+
+## Backend tests (lean layer)
+
+From repository root:
+
+- Run all backend tests: `python -m pytest backend/tests -vv`
+- Run only fast unit tests: `python -m pytest backend/tests -m "not integration" -vv`
+- Run only smoke integration checks: `python -m pytest backend/tests -m "integration and smoke" -vv`
+
+Test groups are organized for readable output by module area:
+
+- `backend/tests/core/`
+- `backend/tests/games/`
+- `backend/tests/tools/`
+- `backend/tests/integration/`
