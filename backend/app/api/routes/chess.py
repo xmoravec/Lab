@@ -55,6 +55,7 @@ async def chess_action(
                 from_username=identity.username or "player",
                 to_username=_require_value(payload.to_username, field_name="toUsername"),
                 color_preference=payload.color_preference,
+                time_control_seconds=payload.invitation_time_control_seconds,
             )
             menu = await chess_service.get_menu(user_id=identity.principal_id)
             return ChessActionResponse(action=action, invitation=invitation, menu=menu)
@@ -86,6 +87,7 @@ async def chess_action(
             started = await chess_service.start_self_play(
                 user_id=identity.principal_id,
                 username=identity.username or "player",
+                time_control_seconds=payload.time_control_seconds,
             )
             match_state = await chess_service.get_match_state(
                 user_id=identity.principal_id,
@@ -103,7 +105,10 @@ async def chess_action(
             started = await chess_service.start_bot_match(
                 user_id=identity.principal_id,
                 username=identity.username or "player",
-                payload=StartBotMatchRequest(play_as=payload.play_as),
+                payload=StartBotMatchRequest(
+                    play_as=payload.play_as,
+                    time_control_seconds=payload.time_control_seconds,
+                ),
             )
             match_state = await chess_service.get_match_state(
                 user_id=identity.principal_id,

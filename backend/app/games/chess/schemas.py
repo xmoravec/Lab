@@ -32,6 +32,7 @@ class ChessMatchStatus(str, Enum):
     CHECKMATE = "checkmate"
     STALEMATE = "stalemate"
     DRAW = "draw"
+    TIMEOUT = "timeout"
 
 
 class InvitationColorPreference(str, Enum):
@@ -61,6 +62,10 @@ class ChessMatchSummary(CamelModel):
     turn_color: ChessColor
     result: Literal["1-0", "0-1", "1/2-1/2", "*"] = "*"
     winner_user_id: str | None = None
+    time_control_seconds: int = Field(ge=1)
+    white_time_remaining_seconds: int = Field(ge=0)
+    black_time_remaining_seconds: int = Field(ge=0)
+    clock_started_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -83,6 +88,7 @@ class ChessInvitationSummary(CamelModel):
     to_user_id: str
     to_username: str
     color_preference: InvitationColorPreference
+    time_control_seconds: int = Field(ge=1)
     status: ChessInvitationStatus
     created_at: datetime
     responded_at: datetime | None = None
@@ -98,6 +104,7 @@ class ChessMenuResponse(CamelModel):
 class SendChessInvitationRequest(CamelModel):
     to_username: str = Field(min_length=3, max_length=64)
     color_preference: InvitationColorPreference = InvitationColorPreference.RANDOM
+    time_control_seconds: int = 600
 
 
 class RespondChessInvitationRequest(CamelModel):
@@ -112,6 +119,7 @@ class RespondChessInvitationResponse(CamelModel):
 
 class StartBotMatchRequest(CamelModel):
     play_as: Literal["white", "black", "random"] = "random"
+    time_control_seconds: int = 600
 
 
 class StartChessMatchResponse(CamelModel):
@@ -145,9 +153,11 @@ class ChessActionRequest(CamelModel):
     action: ChessAction
     to_username: str | None = Field(default=None, min_length=3, max_length=64)
     color_preference: InvitationColorPreference = InvitationColorPreference.RANDOM
+    invitation_time_control_seconds: int = 600
     invitation_id: str | None = Field(default=None, min_length=1)
     invitation_response_action: Literal["accept", "decline"] | None = None
     play_as: Literal["white", "black", "random"] = "random"
+    time_control_seconds: int = 600
     match_id: str | None = Field(default=None, min_length=1)
     from_square: str | None = Field(default=None, min_length=2, max_length=2)
     to_square: str | None = Field(default=None, min_length=2, max_length=2)

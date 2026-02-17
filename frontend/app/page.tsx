@@ -10,7 +10,8 @@ export default async function HomePage() {
   const home = await fetchHomeContent();
   const leaderboard = await fetchWordleLeaderboard();
   const playableGames = home.featuredGames.filter((game) => game.status.toLowerCase() === "playable");
-  const spotlightGame = playableGames[0] ?? home.featuredGames[0] ?? null;
+  const chessPlayable = playableGames.find((game) => game.slug === "chess") ?? null;
+  const spotlightGame = chessPlayable ?? playableGames[0] ?? home.featuredGames[0] ?? null;
   const upcomingGames = home.featuredGames.filter((game) => game.slug !== spotlightGame?.slug);
   const leaderboardLeader = leaderboard.entries[0] ?? null;
 
@@ -24,6 +25,12 @@ export default async function HomePage() {
         <p className="mt-4 max-w-2xl text-base text-zinc-300">{home.heroSubtitle}</p>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Link
+            href="/games/chess"
+            className="rounded-2xl border border-amber-400/50 bg-amber-500/20 px-5 py-4 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30"
+          >
+            Play Chess
+          </Link>
           <Link
             href="/games/wordle"
             className="rounded-2xl border border-fuchsia-500/40 bg-fuchsia-500/15 px-5 py-4 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/25"

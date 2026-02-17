@@ -50,6 +50,8 @@ class ChessServiceError(Exception):
 
 
 class ChessService:
+    _ALLOWED_TIME_CONTROLS: set[int] = {60, 300, 600, 1500, 3600}
+
     @staticmethod
     def _require_chess_engine() -> Any:
         if chess is None:
@@ -98,10 +100,58 @@ class ChessService:
         return datetime.now(timezone.utc)
 
     @staticmethod
+    def _to_utc_aware(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @staticmethod
     def _normalize_result(value: str) -> Literal["1-0", "0-1", "1/2-1/2", "*"]:
         if value in {"1-0", "0-1", "1/2-1/2", "*"}:
             return cast(Literal["1-0", "0-1", "1/2-1/2", "*"], value)
         return "*"
+
+    def _validate_time_control_seconds(self, value: int) -> int:
+        if value not in self._ALLOWED_TIME_CONTROLS:
+            raise ChessServiceError(status_code=400, message="Unsupported time control")
+        return value
+
+    def _sync_clock_state(self, match_document: dict[str, Any]) -> bool:
+        if str(match_document.get("status")) != ChessMatchStatus.ACTIVE.value:
+            return False
+
+        turn_color = str(match_document.get("turn_color") or "white")
+        time_key = "white_time_remaining_seconds" if turn_color == "white" else "black_time_remaining_seconds"
+        current_remaining = int(match_document.get(time_key, 0))
+
+        started_at_raw = match_document.get("clock_started_at")
+        if isinstance(started_at_raw, datetime):
+            started_at = self._to_utc_aware(started_at_raw)
+        else:
+            fallback_started_at = cast(datetime, match_document.get("updated_at") or self._current_timestamp())
+            started_at = self._to_utc_aware(fallback_started_at)
+
+        now = self._current_timestamp()
+        elapsed_seconds = max(0, int((now - started_at).total_seconds()))
+        if elapsed_seconds <= 0:
+            return False
+
+        next_remaining = max(0, current_remaining - elapsed_seconds)
+        match_document[time_key] = next_remaining
+        match_document["clock_started_at"] = now
+        match_document["updated_at"] = now
+
+        if next_remaining == 0:
+            match_document["status"] = ChessMatchStatus.TIMEOUT.value
+            if turn_color == "white":
+                match_document["result"] = "0-1"
+                match_document["winner_user_id"] = match_document.get("black_user_id")
+            else:
+                match_document["result"] = "1-0"
+                match_document["winner_user_id"] = match_document.get("white_user_id")
+            return True
+
+        return True
 
     def _to_match_summary(self, match_document: dict[str, Any]) -> ChessMatchSummary:
         return ChessMatchSummary(
@@ -115,6 +165,10 @@ class ChessService:
             turn_color=ChessColor(str(match_document["turn_color"])),
             result=self._normalize_result(str(match_document.get("result", "*"))),
             winner_user_id=cast(str | None, match_document.get("winner_user_id")),
+            time_control_seconds=int(match_document.get("time_control_seconds", 600)),
+            white_time_remaining_seconds=int(match_document.get("white_time_remaining_seconds", 600)),
+            black_time_remaining_seconds=int(match_document.get("black_time_remaining_seconds", 600)),
+            clock_started_at=cast(datetime | None, match_document.get("clock_started_at")),
             created_at=cast(datetime, match_document["created_at"]),
             updated_at=cast(datetime, match_document["updated_at"]),
         )
@@ -128,6 +182,7 @@ class ChessService:
             to_user_id=str(invitation["to_user_id"]),
             to_username=str(invitation["to_username"]),
             color_preference=InvitationColorPreference(str(invitation["color_preference"])),
+            time_control_seconds=int(invitation.get("time_control_seconds", 600)),
             status=ChessInvitationStatus(str(invitation["status"])),
             created_at=cast(datetime, invitation["created_at"]),
             responded_at=cast(datetime | None, invitation.get("responded_at")),
@@ -292,10 +347,17 @@ class ChessService:
         outgoing = await chess_repository.list_outgoing_invitations(user_id=user_id)
         active_matches = await chess_repository.list_active_matches_for_user(user_id=user_id)
 
+        synced_matches: list[dict[str, Any]] = []
+        for match_document in active_matches:
+            changed = self._sync_clock_state(match_document)
+            if changed:
+                await chess_repository.save_match(match_document)
+            synced_matches.append(match_document)
+
         return ChessMenuResponse(
             incoming_invitations=[self._to_invitation_summary(item) for item in incoming],
             outgoing_invitations=[self._to_invitation_summary(item) for item in outgoing],
-            active_matches=[self._to_match_summary(item) for item in active_matches],
+            active_matches=[self._to_match_summary(item) for item in synced_matches],
         )
 
     async def send_invitation(
@@ -305,8 +367,10 @@ class ChessService:
         from_username: str,
         to_username: str,
         color_preference: InvitationColorPreference,
+        time_control_seconds: int,
     ) -> ChessInvitationSummary:
         to_user_id, resolved_to_username = await self._resolve_user_by_username(to_username)
+        normalized_time_control = self._validate_time_control_seconds(time_control_seconds)
 
         is_admin = await auth_service.is_user_admin(from_user_id)
         if not self._is_admin_allowed_self_invite(
@@ -326,6 +390,7 @@ class ChessService:
             to_user_id=to_user_id,
             to_username=resolved_to_username,
             color_preference=color_preference,
+            time_control_seconds=normalized_time_control,
         )
         return self._to_invitation_summary(invitation)
 
@@ -363,6 +428,7 @@ class ChessService:
             return RespondChessInvitationResponse(invitation=self._to_invitation_summary(refreshed), match=None)
 
         preference = InvitationColorPreference(str(invitation["color_preference"]))
+        invitation_time_control = self._validate_time_control_seconds(int(invitation.get("time_control_seconds", 600)))
         engine = self._require_chess_engine()
         assign_inviter_white = random.choice([True, False]) if preference == InvitationColorPreference.RANDOM else (
             preference == InvitationColorPreference.WHITE
@@ -390,6 +456,7 @@ class ChessService:
             black_user_id=black_user_id,
             black_username=black_username,
             fen=engine.STARTING_FEN,
+            time_control_seconds=invitation_time_control,
         )
 
         updated = await chess_repository.respond_to_invitation(
@@ -410,8 +477,15 @@ class ChessService:
             match=self._to_match_summary(match),
         )
 
-    async def start_self_play(self, *, user_id: str, username: str) -> StartChessMatchResponse:
+    async def start_self_play(
+        self,
+        *,
+        user_id: str,
+        username: str,
+        time_control_seconds: int,
+    ) -> StartChessMatchResponse:
         engine = self._require_chess_engine()
+        normalized_time_control = self._validate_time_control_seconds(time_control_seconds)
         match = await chess_repository.create_match(
             mode=ChessMode.SELF_PLAY.value,
             white_user_id=user_id,
@@ -419,6 +493,7 @@ class ChessService:
             black_user_id=user_id,
             black_username=username,
             fen=engine.STARTING_FEN,
+            time_control_seconds=normalized_time_control,
         )
         return StartChessMatchResponse(match=self._to_match_summary(match))
 
@@ -430,6 +505,7 @@ class ChessService:
         payload: StartBotMatchRequest,
     ) -> StartChessMatchResponse:
         engine = self._require_chess_engine()
+        normalized_time_control = self._validate_time_control_seconds(payload.time_control_seconds)
         play_as = payload.play_as
         if play_as == "random":
             play_as = random.choice(["white", "black"])
@@ -452,6 +528,7 @@ class ChessService:
             black_user_id=black_user_id,
             black_username=black_username,
             fen=engine.STARTING_FEN,
+            time_control_seconds=normalized_time_control,
         )
 
         if white_user_id is None:
@@ -465,6 +542,9 @@ class ChessService:
             raise ChessServiceError(status_code=404, message="Match not found")
 
         self._require_user_in_match(user_id=user_id, match_document=match_document)
+        changed = self._sync_clock_state(match_document)
+        if changed:
+            await chess_repository.save_match(match_document)
         return self._build_match_state(user_id=user_id, match_document=match_document)
 
     async def _perform_bot_turn(self, *, match_document: dict[str, Any]) -> None:
@@ -514,6 +594,13 @@ class ChessService:
 
         if str(match_document["status"]) != ChessMatchStatus.ACTIVE.value:
             raise ChessServiceError(status_code=409, message="Match is already finished")
+
+        changed = self._sync_clock_state(match_document)
+        if changed:
+            await chess_repository.save_match(match_document)
+
+        if str(match_document["status"]) != ChessMatchStatus.ACTIVE.value:
+            raise ChessServiceError(status_code=409, message="Match ended on time")
 
         board = engine.Board(str(match_document["fen"]))
 
@@ -568,6 +655,7 @@ class ChessService:
         match_document["history"] = history
         match_document["fen"] = board.fen()
         match_document["turn_color"] = "white" if board.turn == engine.WHITE else "black"
+        match_document["clock_started_at"] = self._current_timestamp()
         self._apply_match_outcome(board=board, match_document=match_document)
         match_document["updated_at"] = self._current_timestamp()
 

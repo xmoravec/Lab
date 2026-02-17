@@ -20,14 +20,15 @@ import {
 import { ApiRequestError } from "@/lib/http-client";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
+const TIME_CONTROL_OPTIONS = [60, 300, 600, 1500, 3600] as const;
 
 const PIECE_LABELS: Record<string, string> = {
-  wK: "♔",
-  wQ: "♕",
-  wR: "♖",
-  wB: "♗",
-  wN: "♘",
-  wP: "♙",
+  wK: "♚",
+  wQ: "♛",
+  wR: "♜",
+  wB: "♝",
+  wN: "♞",
+  wP: "♟",
   bK: "♚",
   bQ: "♛",
   bR: "♜",
@@ -37,6 +38,7 @@ const PIECE_LABELS: Record<string, string> = {
 };
 
 type BotPlayAs = "white" | "black" | "random";
+type ViewMode = "menu" | "game";
 
 function squareName(rankIndex: number, fileIndex: number): string {
   const file = FILES[fileIndex];
@@ -52,6 +54,52 @@ function colorLabel(color: ChessColor): string {
   return color === "white" ? "White" : "Black";
 }
 
+function formatClock(totalSeconds: number): string {
+  const clamped = Math.max(0, totalSeconds);
+  const minutes = Math.floor(clamped / 60);
+  const seconds = clamped % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function getPieceColor(piece: string): ChessColor | null {
+  if (piece.startsWith("w")) {
+    return "white";
+  }
+  if (piece.startsWith("b")) {
+    return "black";
+  }
+  return null;
+}
+
+function squareFromDisplayCoords(rankIndex: number, fileIndex: number, flipped: boolean): string {
+  const sourceRank = flipped ? 7 - rankIndex : rankIndex;
+  const sourceFile = flipped ? 7 - fileIndex : fileIndex;
+  return squareName(sourceRank, sourceFile);
+}
+
+function parseSquare(square: string): { rankIndex: number; fileIndex: number } {
+  const fileIndex = FILES.indexOf(square[0] ?? "a");
+  const rank = Number(square[1] ?? "8");
+  const rankIndex = 8 - rank;
+  return {
+    rankIndex,
+    fileIndex,
+  };
+}
+
+function findKingSquare(board: string[][], color: ChessColor): string | null {
+  const needle = color === "white" ? "wK" : "bK";
+  for (let rankIndex = 0; rankIndex < board.length; rankIndex += 1) {
+    const rank = board[rankIndex];
+    for (let fileIndex = 0; fileIndex < rank.length; fileIndex += 1) {
+      if (rank[fileIndex] === needle) {
+        return squareName(rankIndex, fileIndex);
+      }
+    }
+  }
+  return null;
+}
+
 function gameStatusLabel(state: ChessMatchState): string {
   const status = state.summary.status;
   if (status === "active") {
@@ -62,6 +110,9 @@ function gameStatusLabel(state: ChessMatchState): string {
   if (status === "checkmate") {
     return `Checkmate · Result ${state.summary.result}`;
   }
+  if (status === "timeout") {
+    return `Time elapsed · Result ${state.summary.result}`;
+  }
   if (status === "stalemate") {
     return "Stalemate · Draw";
   }
@@ -69,8 +120,9 @@ function gameStatusLabel(state: ChessMatchState): string {
 }
 
 export default function ChessPage() {
+  const [viewMode, setViewMode] = useState<ViewMode>("menu");
   const [isBootstrapping, setIsBootstrapping] = useState(true);
-  const [notice, setNotice] = useState("Load matches or start a new chess game.");
+  const [notice, setNotice] = useState("Choose a mode and press Play.");
 
   const [incomingInvitations, setIncomingInvitations] = useState<ChessInvitationSummary[]>([]);
   const [outgoingInvitations, setOutgoingInvitations] = useState<ChessInvitationSummary[]>([]);
@@ -83,6 +135,7 @@ export default function ChessPage() {
   const [inviteColorPreference, setInviteColorPreference] =
     useState<InvitationColorPreference>("random");
   const [botPlayAs, setBotPlayAs] = useState<BotPlayAs>("random");
+  const [timeControlSeconds, setTimeControlSeconds] = useState<number>(600);
 
   const [isSendingInvitation, setIsSendingInvitation] = useState(false);
   const [isRespondingInvitation, setIsRespondingInvitation] = useState(false);
@@ -91,23 +144,42 @@ export default function ChessPage() {
   const [isSubmittingMove, setIsSubmittingMove] = useState(false);
 
   const [selectedFromSquare, setSelectedFromSquare] = useState<string | null>(null);
+  const [deniedSquare, setDeniedSquare] = useState<string | null>(null);
+  const [invalidSquare, setInvalidSquare] = useState<string | null>(null);
+  const [clockTick, setClockTick] = useState<number>(Date.now());
 
   const legalMovesSet = useMemo(() => new Set(match?.legalMoves ?? []), [match?.legalMoves]);
+  const selectedMoveTargets = useMemo(() => {
+    if (!selectedFromSquare || !match) {
+      return new Set<string>();
+    }
+
+    const targets = new Set<string>();
+    for (const uciMove of match.legalMoves) {
+      if (!uciMove.startsWith(selectedFromSquare)) {
+        continue;
+      }
+
+      const toSquare = uciMove.slice(2, 4);
+      if (toSquare.length === 2) {
+        targets.add(toSquare);
+      }
+    }
+    return targets;
+  }, [match, selectedFromSquare]);
 
   const refreshMenu = useCallback(async (): Promise<void> => {
     const menu = await fetchChessMenu();
     setIncomingInvitations(menu.incomingInvitations);
     setOutgoingInvitations(menu.outgoingInvitations);
     setActiveMatches(menu.activeMatches);
-    if (!selectedMatchId && menu.activeMatches.length > 0) {
-      setSelectedMatchId(menu.activeMatches[0].matchId);
-    }
-  }, [selectedMatchId]);
+  }, []);
 
   const loadMatch = useCallback(async (matchId: string): Promise<void> => {
     const nextMatch = await fetchChessMatch(matchId);
     setMatch(nextMatch);
     setSelectedFromSquare(null);
+    setViewMode("game");
   }, []);
 
   useEffect(() => {
@@ -123,16 +195,7 @@ export default function ChessPage() {
         setIncomingInvitations(menu.incomingInvitations);
         setOutgoingInvitations(menu.outgoingInvitations);
         setActiveMatches(menu.activeMatches);
-
-        const initialMatchId = menu.activeMatches[0]?.matchId;
-        if (initialMatchId) {
-          setSelectedMatchId(initialMatchId);
-          const state = await fetchChessMatch(initialMatchId);
-          if (!disposed) {
-            setMatch(state);
-            setNotice("Loaded your active chess match.");
-          }
-        }
+        setNotice("Choose a mode and press Play.");
       } catch (error) {
         if (!disposed) {
           if (error instanceof ApiRequestError && error.status === 401) {
@@ -155,7 +218,7 @@ export default function ChessPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedMatchId) {
+    if (!selectedMatchId || viewMode !== "game") {
       return;
     }
 
@@ -186,7 +249,40 @@ export default function ChessPage() {
       disposed = true;
       window.clearInterval(handle);
     };
-  }, [selectedMatchId]);
+    }, [selectedMatchId, viewMode]);
+
+  useEffect(() => {
+    const handle = window.setInterval(() => {
+      setClockTick(Date.now());
+    }, 1000);
+    return () => {
+      window.clearInterval(handle);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!deniedSquare) {
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      setDeniedSquare(null);
+    }, 500);
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [deniedSquare]);
+
+  useEffect(() => {
+    if (!invalidSquare) {
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      setInvalidSquare(null);
+    }, 900);
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, [invalidSquare]);
 
   async function handleSendInvitation(): Promise<void> {
     if (!inviteUsername.trim()) {
@@ -196,7 +292,7 @@ export default function ChessPage() {
 
     setIsSendingInvitation(true);
     try {
-      await sendChessInvitation(inviteUsername.trim(), inviteColorPreference);
+      await sendChessInvitation(inviteUsername.trim(), inviteColorPreference, timeControlSeconds);
       setInviteUsername("");
       setNotice("Invitation sent.");
       await refreshMenu();
@@ -232,7 +328,7 @@ export default function ChessPage() {
   async function handleStartSelfPlay(): Promise<void> {
     setIsStartingSelfPlay(true);
     try {
-      const response = await startChessSelfPlay();
+      const response = await startChessSelfPlay(timeControlSeconds);
       setSelectedMatchId(response.match.matchId);
       await loadMatch(response.match.matchId);
       await refreshMenu();
@@ -248,7 +344,7 @@ export default function ChessPage() {
   async function handleStartBot(): Promise<void> {
     setIsStartingBot(true);
     try {
-      const response = await startChessBot(botPlayAs);
+      const response = await startChessBot(botPlayAs, timeControlSeconds);
       setSelectedMatchId(response.match.matchId);
       await loadMatch(response.match.matchId);
       await refreshMenu();
@@ -261,12 +357,45 @@ export default function ChessPage() {
     }
   }
 
+  function handleOpenMatch(matchId: string): void {
+    setSelectedMatchId(matchId);
+    void loadMatch(matchId);
+  }
+
+  function pieceAtSquare(square: string): string | null {
+    if (!match) {
+      return null;
+    }
+    const { rankIndex, fileIndex } = parseSquare(square);
+    if (rankIndex < 0 || rankIndex > 7 || fileIndex < 0 || fileIndex > 7) {
+      return null;
+    }
+    const value = match.board[rankIndex]?.[fileIndex] ?? "";
+    return value || null;
+  }
+
   async function handleSquareClick(square: string): Promise<void> {
-    if (!match || !match.canSubmitMoves || isSubmittingMove) {
+    if (!match || isSubmittingMove) {
+      return;
+    }
+
+    if (!match.canSubmitMoves) {
+      setDeniedSquare(square);
+      setNotice(`It is ${colorLabel(match.summary.turnColor)} to move.`);
       return;
     }
 
     if (!selectedFromSquare) {
+      const piece = pieceAtSquare(square);
+      if (!piece) {
+        return;
+      }
+      const pieceColor = getPieceColor(piece);
+      if (!pieceColor || pieceColor !== match.summary.turnColor) {
+        setDeniedSquare(square);
+        setNotice(`Select a ${colorLabel(match.summary.turnColor)} piece.`);
+        return;
+      }
       setSelectedFromSquare(square);
       return;
     }
@@ -285,7 +414,7 @@ export default function ChessPage() {
     const uciCandidate = `${selectedFromSquare}${square}${promotion ?? ""}`;
     if (!legalMovesSet.has(uciCandidate) && !legalMovesSet.has(`${selectedFromSquare}${square}`)) {
       setNotice("Illegal move.");
-      setSelectedFromSquare(square);
+      setInvalidSquare(square);
       return;
     }
 
@@ -308,6 +437,81 @@ export default function ChessPage() {
       setIsSubmittingMove(false);
     }
   }
+
+  const isFlipped = match?.myColor === "black";
+  const displayedBoard = useMemo(() => {
+    if (!match) {
+      return [] as string[][];
+    }
+    if (!isFlipped) {
+      return match.board;
+    }
+    return [...match.board].reverse().map((row) => [...row].reverse());
+  }, [isFlipped, match]);
+
+  const checkedKingSquare = useMemo(() => {
+    if (!match || !match.inCheck) {
+      return null;
+    }
+    return findKingSquare(match.board, match.summary.turnColor);
+  }, [match]);
+
+  const displayClock = useMemo(() => {
+    if (!match) {
+      return { white: 0, black: 0 };
+    }
+
+    let white = match.summary.whiteTimeRemainingSeconds;
+    let black = match.summary.blackTimeRemainingSeconds;
+
+    if (match.summary.status === "active" && match.summary.clockStartedAt) {
+      const elapsed = Math.max(
+        0,
+        Math.floor((clockTick - new Date(match.summary.clockStartedAt).getTime()) / 1000),
+      );
+      if (match.summary.turnColor === "white") {
+        white = Math.max(0, white - elapsed);
+      } else {
+        black = Math.max(0, black - elapsed);
+      }
+    }
+
+    return { white, black };
+  }, [clockTick, match]);
+
+  const topPlayer = useMemo(() => {
+    if (!match) {
+      return null;
+    }
+    return isFlipped
+      ? {
+          color: "white" as ChessColor,
+          username: match.summary.whiteUsername,
+          clockSeconds: displayClock.white,
+        }
+      : {
+          color: "black" as ChessColor,
+          username: match.summary.blackUsername,
+          clockSeconds: displayClock.black,
+        };
+  }, [displayClock.black, displayClock.white, isFlipped, match]);
+
+  const bottomPlayer = useMemo(() => {
+    if (!match) {
+      return null;
+    }
+    return isFlipped
+      ? {
+          color: "black" as ChessColor,
+          username: match.summary.blackUsername,
+          clockSeconds: displayClock.black,
+        }
+      : {
+          color: "white" as ChessColor,
+          username: match.summary.whiteUsername,
+          clockSeconds: displayClock.white,
+        };
+  }, [displayClock.black, displayClock.white, isFlipped, match]);
 
   return (
     <main className="mx-auto max-w-7xl px-6 pb-16 pt-10">
@@ -332,10 +536,32 @@ export default function ChessPage() {
         </p>
       </section>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-[360px_1fr]">
+      {viewMode === "menu" ? (
+      <section className="mt-6 grid gap-6 lg:grid-cols-[380px_1fr]">
         <aside className="space-y-6">
           <article className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-4">
-            <h2 className="text-base font-semibold text-zinc-100">New game</h2>
+            <h2 className="text-base font-semibold text-zinc-100">Play</h2>
+
+            <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950/70 p-3">
+              <label className="text-xs uppercase tracking-widest text-zinc-400">Time control</label>
+              <select
+                value={timeControlSeconds}
+                onChange={(event) => {
+                  setTimeControlSeconds(Number(event.target.value));
+                }}
+                className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-sm text-zinc-100"
+              >
+                {TIME_CONTROL_OPTIONS.map((seconds) => (
+                  <option key={seconds} value={seconds}>
+                    {seconds >= 3600
+                      ? "1 hour"
+                      : seconds >= 60
+                        ? `${Math.floor(seconds / 60)} minutes`
+                        : `${seconds} seconds`}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <button
               type="button"
@@ -345,7 +571,7 @@ export default function ChessPage() {
               disabled={isStartingSelfPlay}
               className="mt-3 w-full rounded-xl border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-60"
             >
-              {isStartingSelfPlay ? "Starting..." : "Start self-play"}
+              {isStartingSelfPlay ? "Starting..." : "Play self-play"}
             </button>
 
             <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950/70 p-3">
@@ -369,7 +595,7 @@ export default function ChessPage() {
                 disabled={isStartingBot}
                 className="mt-3 w-full rounded-xl border border-violet-500/40 bg-violet-500/15 px-3 py-2 text-sm font-medium text-violet-100 transition hover:bg-violet-500/25 disabled:opacity-60"
               >
-                {isStartingBot ? "Starting..." : "Start bot match"}
+                {isStartingBot ? "Starting..." : "Play bot match"}
               </button>
             </div>
           </article>
@@ -462,7 +688,9 @@ export default function ChessPage() {
                     className="rounded-xl border border-zinc-700 bg-zinc-950/70 p-3 text-sm text-zinc-200"
                   >
                     <p>To: {invitation.toUsername}</p>
-                    <p className="mt-1 text-xs text-zinc-400">Preference: {invitation.colorPreference}</p>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Preference: {invitation.colorPreference} · {Math.floor(invitation.timeControlSeconds / 60)}m
+                    </p>
                   </div>
                 ))
               )}
@@ -476,26 +704,30 @@ export default function ChessPage() {
                 <p className="text-sm text-zinc-500">No active matches.</p>
               ) : (
                 activeMatches.map((entry) => (
-                  <button
+                  <div
                     key={entry.matchId}
-                    type="button"
-                    onClick={() => {
-                      setSelectedMatchId(entry.matchId);
-                      void loadMatch(entry.matchId);
-                    }}
                     className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
                       entry.matchId === selectedMatchId
                         ? "border-amber-400/70 bg-amber-500/15 text-amber-100"
-                        : "border-zinc-700 bg-zinc-950/70 text-zinc-200 hover:bg-zinc-900"
+                        : "border-zinc-700 bg-zinc-950/70 text-zinc-200"
                     }`}
                   >
                     <p className="font-medium">
                       {entry.whiteUsername} vs {entry.blackUsername}
                     </p>
                     <p className="mt-1 text-xs text-zinc-400">
-                      {entry.mode} · {colorLabel(entry.turnColor)} to move
+                      {entry.mode} · {Math.floor(entry.timeControlSeconds / 60)}m · {colorLabel(entry.turnColor)} to move
                     </p>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleOpenMatch(entry.matchId);
+                      }}
+                      className="mt-2 rounded-lg border border-cyan-500/40 bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-cyan-100 transition hover:bg-cyan-500/25"
+                    >
+                      Play
+                    </button>
+                  </div>
                 ))
               )}
             </div>
@@ -503,35 +735,75 @@ export default function ChessPage() {
         </aside>
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-5">
+          <h2 className="text-lg font-semibold text-zinc-100">Ready to play</h2>
+          <p className="mt-2 text-sm text-zinc-300">
+            Start a new match or pick an active one. Board view opens after you press Play.
+          </p>
+        </section>
+      </section>
+      ) : (
+      <section className="mt-6">
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-5">
           {match ? (
             <>
-              <header className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-zinc-100">
                     {match.summary.whiteUsername} vs {match.summary.blackUsername}
                   </h2>
                   <p className="text-sm text-zinc-300">{gameStatusLabel(match)}</p>
                 </div>
-                <span
-                  className={`rounded-full border px-3 py-1 text-xs font-medium ${
-                    match.canSubmitMoves
-                      ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
-                      : "border-zinc-700 bg-zinc-800 text-zinc-300"
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                      match.canSubmitMoves
+                        ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-100"
+                        : "border-zinc-700 bg-zinc-800 text-zinc-300"
+                    }`}
+                  >
+                    {match.canSubmitMoves ? "Your turn" : "Waiting"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode("menu");
+                    }}
+                    className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-100 transition hover:bg-zinc-700"
+                  >
+                    Menu
+                  </button>
+                </div>
+              </header>
+
+              {topPlayer ? (
+                <div
+                  className={`mx-auto mb-2 flex w-full max-w-160 items-center justify-between rounded-xl border px-3 py-2 text-sm ${
+                    match.summary.turnColor === topPlayer.color
+                      ? "border-amber-400/70 bg-amber-500/15 text-amber-100"
+                      : "border-zinc-700 bg-zinc-950/70 text-zinc-200"
                   }`}
                 >
-                  {match.canSubmitMoves ? "Your turn" : "Waiting"}
-                </span>
-              </header>
+                  <span className="font-medium">
+                    {topPlayer.username} · {colorLabel(topPlayer.color)}
+                  </span>
+                  <span className="font-semibold tracking-wider">{formatClock(topPlayer.clockSeconds)}</span>
+                </div>
+              ) : null}
 
               <div className="mx-auto w-full max-w-140 rounded-2xl border border-zinc-700 bg-zinc-950/70 p-3">
                 <div className="grid grid-cols-8 overflow-hidden rounded-lg border border-zinc-700">
-                  {match.board.map((rank, rankIndex) =>
+                  {displayedBoard.map((rank, rankIndex) =>
                     rank.map((piece, fileIndex) => {
-                      const square = squareName(rankIndex, fileIndex);
+                      const square = squareFromDisplayCoords(rankIndex, fileIndex, Boolean(isFlipped));
                       const selected = selectedFromSquare === square;
+                      const legalTarget = selectedMoveTargets.has(square);
+                      const denied = deniedSquare === square;
+                      const invalid = invalidSquare === square;
+                      const checked = checkedKingSquare === square;
+                      const hasPiece = Boolean(piece);
                       const baseTone = isLightSquare(rankIndex, fileIndex)
-                        ? "bg-amber-100 text-zinc-900"
-                        : "bg-amber-700 text-amber-100";
+                        ? "bg-amber-200"
+                        : "bg-amber-700";
 
                       return (
                         <button
@@ -541,25 +813,49 @@ export default function ChessPage() {
                             void handleSquareClick(square);
                           }}
                           disabled={!match.canSubmitMoves}
-                          className={`aspect-square border border-black/10 text-3xl transition ${baseTone} ${
-                            selected ? "ring-2 ring-cyan-400 ring-inset" : ""
-                          } ${
-                            match.canSubmitMoves ? "hover:brightness-110" : "cursor-default opacity-95"
-                          }`}
+                          className={`relative aspect-square border border-black/10 transition ${baseTone} ${selected ? "ring-4 ring-cyan-300 ring-inset" : ""} ${legalTarget ? "ring-2 ring-emerald-300/80 ring-inset" : ""} ${denied ? "ring-2 ring-amber-300 ring-inset" : ""} ${invalid ? "ring-2 ring-rose-300 ring-inset bg-rose-500/80" : ""} ${checked ? "ring-4 ring-rose-400 ring-inset" : ""} ${match.canSubmitMoves ? "hover:brightness-110" : "cursor-default opacity-95"}`}
                           aria-label={`Square ${square}`}
                         >
-                          {PIECE_LABELS[piece] ?? ""}
+                          {legalTarget ? (
+                            hasPiece ? (
+                              <span className="pointer-events-none absolute inset-2 rounded-md border-3 border-emerald-200/90" />
+                            ) : (
+                              <span className="pointer-events-none absolute left-1/2 top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-200/90" />
+                            )
+                          ) : null}
+                          {piece ? (
+                            <span
+                              className={`relative z-10 inline-block select-none text-5xl leading-none transition-transform duration-150 ease-out md:text-6xl ${selected ? "-translate-y-1 scale-110" : "translate-y-0 scale-100"} ${piece.startsWith("w") ? "text-white [text-shadow:0_1px_0_rgba(255,255,255,0.95),0_2px_3px_rgba(0,0,0,0.85)]" : "text-black [text-shadow:0_1px_0_rgba(0,0,0,0.85)]"}`}
+                            >
+                              {PIECE_LABELS[piece] ?? ""}
+                            </span>
+                          ) : null}
                         </button>
                       );
                     }),
                   )}
                 </div>
                 <div className="mt-2 grid grid-cols-8 text-center text-xs text-zinc-400">
-                  {FILES.map((file) => (
+                  {(isFlipped ? [...FILES].reverse() : FILES).map((file) => (
                     <span key={file}>{file}</span>
                   ))}
                 </div>
               </div>
+
+              {bottomPlayer ? (
+                <div
+                  className={`mx-auto mt-2 flex w-full max-w-160 items-center justify-between rounded-xl border px-3 py-2 text-sm ${
+                    match.summary.turnColor === bottomPlayer.color
+                      ? "border-amber-400/70 bg-amber-500/15 text-amber-100"
+                      : "border-zinc-700 bg-zinc-950/70 text-zinc-200"
+                  }`}
+                >
+                  <span className="font-medium">
+                    {bottomPlayer.username} · {colorLabel(bottomPlayer.color)}
+                  </span>
+                  <span className="font-semibold tracking-wider">{formatClock(bottomPlayer.clockSeconds)}</span>
+                </div>
+              ) : null}
 
               <div className="mt-5 rounded-xl border border-zinc-700 bg-zinc-950/70 p-3">
                 <h3 className="text-sm font-medium text-zinc-200">Move history</h3>
@@ -578,11 +874,12 @@ export default function ChessPage() {
             </>
           ) : (
             <div className="rounded-2xl border border-zinc-700 bg-zinc-950/70 p-6 text-center text-zinc-300">
-              Choose a match from the menu or start a new game.
+              Choose a match from the menu and press Play.
             </div>
           )}
         </section>
       </section>
+      )}
     </main>
   );
 }

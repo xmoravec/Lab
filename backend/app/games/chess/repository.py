@@ -60,6 +60,7 @@ class ChessRepository:
         to_user_id: str,
         to_username: str,
         color_preference: InvitationColorPreference,
+        time_control_seconds: int,
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         invitation: dict[str, Any] = {
@@ -69,6 +70,7 @@ class ChessRepository:
             "to_user_id": to_user_id,
             "to_username": to_username,
             "color_preference": color_preference.value,
+            "time_control_seconds": time_control_seconds,
             "status": ChessInvitationStatus.PENDING.value,
             "created_at": now,
             "responded_at": None,
@@ -148,6 +150,7 @@ class ChessRepository:
         black_user_id: str | None,
         black_username: str,
         fen: str,
+        time_control_seconds: int,
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         participants = [value for value in [white_user_id, black_user_id] if isinstance(value, str) and value]
@@ -164,6 +167,10 @@ class ChessRepository:
             "history": [],
             "result": "*",
             "winner_user_id": None,
+            "time_control_seconds": time_control_seconds,
+            "white_time_remaining_seconds": time_control_seconds,
+            "black_time_remaining_seconds": time_control_seconds,
+            "clock_started_at": now,
             "participants": participants,
             "created_at": now,
             "updated_at": now,

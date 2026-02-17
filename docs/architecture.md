@@ -137,6 +137,8 @@ This gives a deterministic “ready” signal and a reusable function for future
   - `multiplayer` (invitation-based account matches)
   - `self-play` (same account controls both colors)
   - `bot` (single-player against a basic built-in heuristic bot)
+- Match clock is server-authoritative real-time and persists in DB state (`clock_started_at` + remaining seconds). Active games can end by timeout even when players are off-page.
+- Supported time controls are intentionally constrained to menu presets: 1m, 5m, 10m (default), 25m, and 60m.
 
 ### Leaderboards module
 
@@ -166,6 +168,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Dev Log page has been removed from the product navigation and route surface.
 - Wordle UI is encapsulated under `frontend/app/games/wordle/` and now consumes authenticated Next.js proxy routes.
 - Chess UI is encapsulated under `frontend/app/games/chess/` and consumes one authenticated Next.js proxy route at `frontend/app/api/chess/route.ts`.
+- Chess page now opens to a menu-first flow (mode/time-control selection and invitations) and transitions to a dominant board view after explicit Play/open-match action.
 - Wordle pre-game menu exposes a subtle board-width mode control (`Classic (5)` default, `Auto` lab mode) while keeping 5-letter gameplay as the primary experience.
 
 ### Authenticated proxy routing

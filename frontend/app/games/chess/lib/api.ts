@@ -4,7 +4,7 @@ export type ChessMode = "multiplayer" | "self-play" | "bot";
 export type ChessColor = "white" | "black";
 export type ChessInvitationStatus = "pending" | "accepted" | "declined" | "canceled";
 export type InvitationColorPreference = "white" | "black" | "random";
-export type ChessMatchStatus = "active" | "checkmate" | "stalemate" | "draw";
+export type ChessMatchStatus = "active" | "checkmate" | "stalemate" | "draw" | "timeout";
 
 export type ChessMoveRecord = {
   moveNumber: number;
@@ -27,6 +27,10 @@ export type ChessMatchSummary = {
   turnColor: ChessColor;
   result: "1-0" | "0-1" | "1/2-1/2" | "*";
   winnerUserId?: string | null;
+  timeControlSeconds: number;
+  whiteTimeRemainingSeconds: number;
+  blackTimeRemainingSeconds: number;
+  clockStartedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -49,6 +53,7 @@ export type ChessInvitationSummary = {
   toUserId: string;
   toUsername: string;
   colorPreference: InvitationColorPreference;
+  timeControlSeconds: number;
   status: ChessInvitationStatus;
   createdAt: string;
   respondedAt?: string | null;
@@ -99,9 +104,11 @@ type ChessActionPayload = {
   action: ChessAction;
   toUsername?: string;
   colorPreference?: InvitationColorPreference;
+  invitationTimeControlSeconds?: number;
   invitationId?: string;
   invitationResponseAction?: "accept" | "decline";
   playAs?: "white" | "black" | "random";
+  timeControlSeconds?: number;
   matchId?: string;
   fromSquare?: string;
   toSquare?: string;
@@ -127,11 +134,13 @@ export async function fetchChessMenu(): Promise<ChessMenuResponse> {
 export async function sendChessInvitation(
   toUsername: string,
   colorPreference: InvitationColorPreference,
+  timeControlSeconds: number,
 ): Promise<ChessInvitationSummary> {
   const response = await chessAction({
     action: "send-invitation",
     toUsername,
     colorPreference,
+    invitationTimeControlSeconds: timeControlSeconds,
   });
   if (!response.invitation) {
     throw new Error("Missing invitation response");
@@ -154,9 +163,10 @@ export async function respondChessInvitation(
   return response.invitationResponse;
 }
 
-export async function startChessSelfPlay(): Promise<StartChessMatchResponse> {
+export async function startChessSelfPlay(timeControlSeconds: number): Promise<StartChessMatchResponse> {
   const response = await chessAction({
     action: "start-self-play",
+    timeControlSeconds,
   });
   if (!response.startedMatch) {
     throw new Error("Missing started match payload");
@@ -166,10 +176,12 @@ export async function startChessSelfPlay(): Promise<StartChessMatchResponse> {
 
 export async function startChessBot(
   playAs: "white" | "black" | "random",
+  timeControlSeconds: number,
 ): Promise<StartChessMatchResponse> {
   const response = await chessAction({
     action: "start-bot",
     playAs,
+    timeControlSeconds,
   });
   if (!response.startedMatch) {
     throw new Error("Missing started match payload");
