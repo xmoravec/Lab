@@ -137,6 +137,12 @@ This gives a deterministic “ready” signal and a reusable function for future
   - `multiplayer` (invitation-based account matches)
   - `self-play` (same account controls both colors)
   - `bot` (single-player against a basic built-in heuristic bot)
+- Bot difficulty is selectable from UI as `easy`, `medium` (default), or `hard` and is persisted per bot match.
+- Current bot move policy combines tactical checks (mate-in-1 detection) with depth-based search:
+  - `easy`: depth-1 capture-priority heuristic with random tie-break
+  - `medium`: depth-2 minimax with alpha-beta pruning
+  - `hard`: depth-3 minimax with alpha-beta pruning
+- Bot replies are decoupled from player submit requests: user moves are persisted and returned immediately, while bot turns are scheduled asynchronously with a minimum 5-second think window and applied on subsequent match-state fetches.
 - Match clock is server-authoritative real-time and persists in DB state (`clock_started_at` + remaining seconds). Active games can end by timeout even when players are off-page.
 - Supported time controls are intentionally constrained to menu presets: 1m, 5m, 10m (default), 25m, and 60m.
 
@@ -167,8 +173,15 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Wordle Solver tool UI is served at `/tools/wordle_solver` with multi-row green/yellow/gray clue inputs, ranked suggestions, and candidate previews.
 - Dev Log page has been removed from the product navigation and route surface.
 - Wordle UI is encapsulated under `frontend/app/games/wordle/` and now consumes authenticated Next.js proxy routes.
+- Wordle now opens in a menu-first flow (including when an active game exists) and requires explicit Resume/Play action before entering the board view.
+- Admin reveal controls in Wordle are visible only while admin mode is currently enabled (live-synced from server cookie state), preventing stale visibility after admin mode is switched off.
 - Chess UI is encapsulated under `frontend/app/games/chess/` and consumes one authenticated Next.js proxy route at `frontend/app/api/chess/route.ts`.
 - Chess page now opens to a menu-first flow (mode/time-control selection and invitations) and transitions to a dominant board view after explicit Play/open-match action.
+- Chess board rendering uses generated SVG piece assets under `frontend/public/assets/chess/pieces/` for higher-fidelity visuals.
+- Player bars display captured-piece icons per color and show a material-lead `+N` indicator on the side currently ahead in material.
+- In-game board view defaults to an extra-large layout and provides a compact size toggle in the game header.
+- Piece-selection UX supports direct own-piece reselection: clicking another of your pieces while one is selected switches selection instead of surfacing an illegal-move warning.
+- Board squares subtly indicate the previous move (source and destination) for quick turn-context awareness.
 - Wordle pre-game menu exposes a subtle board-width mode control (`Classic (5)` default, `Auto` lab mode) while keeping 5-letter gameplay as the primary experience.
 
 ### Authenticated proxy routing

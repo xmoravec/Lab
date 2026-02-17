@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Black bishop">
+  <defs>
+    <linearGradient id="bb" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#4b5563"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="18" r="7" fill="#374151" stroke="#e5e7eb" stroke-width="3"/>
+  <path d="M50 24c11 0 18 10 18 20 0 8-4 15-9 20h9v8H32v-8h9c-5-5-9-12-9-20 0-10 7-20 18-20z" fill="url(#bb)" stroke="#e5e7eb" stroke-width="4"/>
+  <path d="M42 34l16 16" stroke="#e5e7eb" stroke-width="4" stroke-linecap="round"/>
+  <rect x="28" y="78" width="44" height="10" rx="4" fill="#111827" stroke="#e5e7eb" stroke-width="4"/>
+</svg>

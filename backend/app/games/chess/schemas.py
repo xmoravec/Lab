@@ -41,6 +41,12 @@ class InvitationColorPreference(str, Enum):
     RANDOM = "random"
 
 
+class BotDifficulty(str, Enum):
+    EASY = "easy"
+    MEDIUM = "medium"
+    HARD = "hard"
+
+
 class ChessMoveRecord(CamelModel):
     move_number: int = Field(ge=1)
     uci: str = Field(min_length=4, max_length=5)
@@ -119,6 +125,7 @@ class RespondChessInvitationResponse(CamelModel):
 
 class StartBotMatchRequest(CamelModel):
     play_as: Literal["white", "black", "random"] = "random"
+    bot_difficulty: BotDifficulty = BotDifficulty.MEDIUM
     time_control_seconds: int = 600
 
 
@@ -157,6 +164,7 @@ class ChessActionRequest(CamelModel):
     invitation_id: str | None = Field(default=None, min_length=1)
     invitation_response_action: Literal["accept", "decline"] | None = None
     play_as: Literal["white", "black", "random"] = "random"
+    bot_difficulty: BotDifficulty = BotDifficulty.MEDIUM
     time_control_seconds: int = 600
     match_id: str | None = Field(default=None, min_length=1)
     from_square: str | None = Field(default=None, min_length=2, max_length=2)

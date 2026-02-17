@@ -8,6 +8,7 @@ export async function POST(request: Request): Promise<Response> {
     invitationId?: string;
     invitationResponseAction?: "accept" | "decline";
     playAs?: "white" | "black" | "random";
+    botDifficulty?: "easy" | "medium" | "hard";
     matchId?: string;
     fromSquare?: string;
     toSquare?: string;

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import importlib
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, cast
 
 from app.core.database import mongo_manager
 from app.games.chess.repository import chess_repository
 from app.games.chess.schemas import (
+    BotDifficulty,
     ChessColor,
     ChessInvitationStatus,
     ChessInvitationSummary,
@@ -41,6 +42,12 @@ PIECE_VALUES: dict[int, int] = {
     6: 100,
 }
 
+BOT_DIFFICULTY_DEPTH: dict[str, int] = {
+    BotDifficulty.EASY.value: 1,
+    BotDifficulty.MEDIUM.value: 2,
+    BotDifficulty.HARD.value: 3,
+}
+
 
 class ChessServiceError(Exception):
     def __init__(self, status_code: int, message: str) -> None:
@@ -51,6 +58,7 @@ class ChessServiceError(Exception):
 
 class ChessService:
     _ALLOWED_TIME_CONTROLS: set[int] = {60, 300, 600, 1500, 3600}
+    _BOT_MIN_THINK_SECONDS: int = 5
 
     @staticmethod
     def _require_chess_engine() -> Any:
@@ -151,6 +159,53 @@ class ChessService:
                 match_document["winner_user_id"] = match_document.get("white_user_id")
             return True
 
+        return True
+
+    def _schedule_bot_turn_if_needed(self, *, match_document: dict[str, Any]) -> bool:
+        if str(match_document.get("mode")) != ChessMode.BOT.value:
+            return False
+        if str(match_document.get("status")) != ChessMatchStatus.ACTIVE.value:
+            return False
+
+        engine = self._require_chess_engine()
+        board = engine.Board(str(match_document["fen"]))
+        bot_color = self._bot_color(match_document)
+        if bot_color is None or board.turn != bot_color:
+            return False
+
+        existing_not_before = match_document.get("bot_move_not_before_at")
+        if isinstance(existing_not_before, datetime):
+            return False
+
+        now = self._current_timestamp()
+        match_document["bot_move_not_before_at"] = now + timedelta(seconds=self._BOT_MIN_THINK_SECONDS)
+        match_document["updated_at"] = now
+        return True
+
+    async def _advance_bot_turn_if_due(self, *, match_document: dict[str, Any]) -> bool:
+        if str(match_document.get("mode")) != ChessMode.BOT.value:
+            return False
+        if str(match_document.get("status")) != ChessMatchStatus.ACTIVE.value:
+            return False
+
+        engine = self._require_chess_engine()
+        board = engine.Board(str(match_document["fen"]))
+        bot_color = self._bot_color(match_document)
+        if bot_color is None or board.turn != bot_color:
+            return False
+
+        pending_raw = match_document.get("bot_move_not_before_at")
+        if isinstance(pending_raw, datetime):
+            pending_until = self._to_utc_aware(pending_raw)
+            if self._current_timestamp() < pending_until:
+                return False
+        else:
+            scheduled = self._schedule_bot_turn_if_needed(match_document=match_document)
+            if scheduled:
+                await chess_repository.save_match(match_document)
+                return True
+
+        await self._perform_bot_turn(match_document=match_document)
         return True
 
     def _to_match_summary(self, match_document: dict[str, Any]) -> ChessMatchSummary:
@@ -278,7 +333,102 @@ class ChessService:
         return None
 
     @staticmethod
-    def _best_bot_move(board: Any) -> Any:
+    def _evaluate_board(*, board: Any, bot_color: bool) -> int:
+        engine = ChessService._require_chess_engine()
+        if board.is_checkmate():
+            return -100_000 if board.turn == bot_color else 100_000
+        if board.is_stalemate() or board.is_insufficient_material() or board.can_claim_draw():
+            return 0
+
+        score = 0
+        piece_map = board.piece_map()
+        for piece in piece_map.values():
+            value = PIECE_VALUES.get(piece.piece_type, 0)
+            if piece.color == bot_color:
+                score += value
+            else:
+                score -= value
+        return score
+
+    @staticmethod
+    def _order_moves(board: Any, legal_moves: list[Any]) -> list[Any]:
+        ordered: list[tuple[int, Any]] = []
+        for move in legal_moves:
+            priority = 0
+            if board.is_capture(move):
+                priority += 100
+                if board.is_en_passant(move):
+                    priority += PIECE_VALUES[ChessService._require_chess_engine().PAWN]
+                else:
+                    target_piece = board.piece_at(move.to_square)
+                    if target_piece is not None:
+                        priority += PIECE_VALUES.get(target_piece.piece_type, 0)
+
+            board.push(move)
+            if board.is_checkmate():
+                priority += 10_000
+            elif board.is_check():
+                priority += 50
+            board.pop()
+
+            ordered.append((priority, move))
+
+        ordered.sort(key=lambda row: row[0], reverse=True)
+        return [row[1] for row in ordered]
+
+    @staticmethod
+    def _minimax(*, board: Any, depth: int, alpha: int, beta: int, maximizing: bool, bot_color: bool) -> int:
+        if depth <= 0 or board.is_game_over(claim_draw=True):
+            return ChessService._evaluate_board(board=board, bot_color=bot_color)
+
+        legal_moves = list(board.legal_moves)
+        ordered_moves = ChessService._order_moves(board, legal_moves)
+
+        if maximizing:
+            best_value = -1_000_000
+            for move in ordered_moves:
+                board.push(move)
+                value = ChessService._minimax(
+                    board=board,
+                    depth=depth - 1,
+                    alpha=alpha,
+                    beta=beta,
+                    maximizing=False,
+                    bot_color=bot_color,
+                )
+                board.pop()
+
+                if value > best_value:
+                    best_value = value
+                if value > alpha:
+                    alpha = value
+                if beta <= alpha:
+                    break
+            return best_value
+
+        best_value = 1_000_000
+        for move in ordered_moves:
+            board.push(move)
+            value = ChessService._minimax(
+                board=board,
+                depth=depth - 1,
+                alpha=alpha,
+                beta=beta,
+                maximizing=True,
+                bot_color=bot_color,
+            )
+            board.pop()
+
+            if value < best_value:
+                best_value = value
+            if value < beta:
+                beta = value
+            if beta <= alpha:
+                break
+        return best_value
+
+    @staticmethod
+    def _best_capture_or_random_move(board: Any) -> Any:
         engine = ChessService._require_chess_engine()
         legal_moves = list(board.legal_moves)
         if not legal_moves:
@@ -311,6 +461,51 @@ class ChessService:
 
         if best_captures:
             return random.choice(best_captures)
+        return random.choice(legal_moves)
+
+    @staticmethod
+    def _best_bot_move(board: Any, *, bot_color: bool | None = None, depth: int = 1) -> Any:
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            raise ChessServiceError(status_code=400, message="No legal bot moves available")
+
+        if bot_color is None:
+            bot_color = cast(bool, board.turn)
+
+        for move in legal_moves:
+            board.push(move)
+            is_mate = board.is_checkmate()
+            board.pop()
+            if is_mate:
+                return move
+
+        if depth <= 1:
+            return ChessService._best_capture_or_random_move(board)
+
+        ordered_moves = ChessService._order_moves(board, legal_moves)
+        best_score = -1_000_000
+        best_moves: list[Any] = []
+
+        for move in ordered_moves:
+            board.push(move)
+            score = ChessService._minimax(
+                board=board,
+                depth=depth - 1,
+                alpha=-1_000_000,
+                beta=1_000_000,
+                maximizing=False,
+                bot_color=bot_color,
+            )
+            board.pop()
+
+            if score > best_score:
+                best_score = score
+                best_moves = [move]
+            elif score == best_score:
+                best_moves.append(move)
+
+        if best_moves:
+            return random.choice(best_moves)
         return random.choice(legal_moves)
 
     @staticmethod
@@ -507,6 +702,7 @@ class ChessService:
         engine = self._require_chess_engine()
         normalized_time_control = self._validate_time_control_seconds(payload.time_control_seconds)
         play_as = payload.play_as
+        bot_difficulty = payload.bot_difficulty.value
         if play_as == "random":
             play_as = random.choice(["white", "black"])
 
@@ -529,10 +725,13 @@ class ChessService:
             black_username=black_username,
             fen=engine.STARTING_FEN,
             time_control_seconds=normalized_time_control,
+            bot_difficulty=bot_difficulty,
         )
 
         if white_user_id is None:
-            await self._perform_bot_turn(match_document=match)
+            scheduled = self._schedule_bot_turn_if_needed(match_document=match)
+            if scheduled:
+                await chess_repository.save_match(match)
 
         return StartChessMatchResponse(match=self._to_match_summary(match))
 
@@ -543,6 +742,13 @@ class ChessService:
 
         self._require_user_in_match(user_id=user_id, match_document=match_document)
         changed = self._sync_clock_state(match_document)
+        bot_changed = await self._advance_bot_turn_if_due(match_document=match_document)
+
+        if bot_changed:
+            refreshed = await chess_repository.get_match(match_id=match_id)
+            if refreshed is not None:
+                match_document = refreshed
+
         if changed:
             await chess_repository.save_match(match_document)
         return self._build_match_state(user_id=user_id, match_document=match_document)
@@ -560,7 +766,10 @@ class ChessService:
         if board.turn != bot_color:
             return
 
-        bot_move = self._best_bot_move(board)
+        difficulty_key = str(match_document.get("bot_difficulty") or BotDifficulty.MEDIUM.value)
+        bot_depth = BOT_DIFFICULTY_DEPTH.get(difficulty_key, BOT_DIFFICULTY_DEPTH[BotDifficulty.MEDIUM.value])
+
+        bot_move = self._best_bot_move(board=board, bot_color=bot_color, depth=bot_depth)
         san = board.san(bot_move)
         board.push(bot_move)
 
@@ -580,6 +789,8 @@ class ChessService:
         match_document["history"] = history
         match_document["fen"] = board.fen()
         match_document["turn_color"] = "white" if board.turn == engine.WHITE else "black"
+        match_document["clock_started_at"] = self._current_timestamp()
+        match_document["bot_move_not_before_at"] = None
         self._apply_match_outcome(board=board, match_document=match_document)
         match_document["updated_at"] = self._current_timestamp()
         await chess_repository.save_match(match_document)
@@ -659,14 +870,8 @@ class ChessService:
         self._apply_match_outcome(board=board, match_document=match_document)
         match_document["updated_at"] = self._current_timestamp()
 
+        scheduled_bot = self._schedule_bot_turn_if_needed(match_document=match_document)
         await chess_repository.save_match(match_document)
-
-        bot_moved = False
-        if str(match_document.get("mode")) == ChessMode.BOT.value and str(match_document.get("status")) == ChessMatchStatus.ACTIVE.value:
-            bot_color = self._bot_color(match_document)
-            if bot_color is not None and board.turn == bot_color:
-                await self._perform_bot_turn(match_document=match_document)
-                bot_moved = True
 
         refreshed = await chess_repository.get_match(match_id=payload.match_id)
         if refreshed is None:
@@ -675,7 +880,7 @@ class ChessService:
         state = self._build_match_state(user_id=user_id, match_document=refreshed)
         return SubmitChessMoveResponse(
             accepted=True,
-            message="Move accepted. Bot replied." if bot_moved else "Move accepted.",
+            message="Move accepted. Bot is thinking..." if scheduled_bot else "Move accepted.",
             match=state,
         )
 

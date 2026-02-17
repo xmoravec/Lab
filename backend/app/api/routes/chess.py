@@ -107,6 +107,7 @@ async def chess_action(
                 username=identity.username or "player",
                 payload=StartBotMatchRequest(
                     play_as=payload.play_as,
+                    bot_difficulty=payload.bot_difficulty,
                     time_control_seconds=payload.time_control_seconds,
                 ),
             )

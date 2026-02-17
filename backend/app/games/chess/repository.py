@@ -151,6 +151,7 @@ class ChessRepository:
         black_username: str,
         fen: str,
         time_control_seconds: int,
+        bot_difficulty: str | None = None,
     ) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         participants = [value for value in [white_user_id, black_user_id] if isinstance(value, str) and value]
@@ -175,6 +176,8 @@ class ChessRepository:
             "created_at": now,
             "updated_at": now,
         }
+        if bot_difficulty is not None:
+            match["bot_difficulty"] = bot_difficulty
         await self._matches().insert_one(match)
         return match
 

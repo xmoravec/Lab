@@ -2,6 +2,7 @@ import { requestAppJson } from "@/lib/app-http-client";
 
 export type ChessMode = "multiplayer" | "self-play" | "bot";
 export type ChessColor = "white" | "black";
+export type BotDifficulty = "easy" | "medium" | "hard";
 export type ChessInvitationStatus = "pending" | "accepted" | "declined" | "canceled";
 export type InvitationColorPreference = "white" | "black" | "random";
 export type ChessMatchStatus = "active" | "checkmate" | "stalemate" | "draw" | "timeout";
@@ -108,6 +109,7 @@ type ChessActionPayload = {
   invitationId?: string;
   invitationResponseAction?: "accept" | "decline";
   playAs?: "white" | "black" | "random";
+  botDifficulty?: BotDifficulty;
   timeControlSeconds?: number;
   matchId?: string;
   fromSquare?: string;
@@ -176,11 +178,13 @@ export async function startChessSelfPlay(timeControlSeconds: number): Promise<St
 
 export async function startChessBot(
   playAs: "white" | "black" | "random",
+  botDifficulty: BotDifficulty,
   timeControlSeconds: number,
 ): Promise<StartChessMatchResponse> {
   const response = await chessAction({
     action: "start-bot",
     playAs,
+    botDifficulty,
     timeControlSeconds,
   });
   if (!response.startedMatch) {

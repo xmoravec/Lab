@@ -1,7 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   fetchChessMatch,
@@ -11,6 +12,7 @@ import {
   startChessBot,
   startChessSelfPlay,
   submitChessMove,
+  type BotDifficulty,
   type ChessColor,
   type ChessInvitationSummary,
   type ChessMatchState,
@@ -21,24 +23,55 @@ import { ApiRequestError } from "@/lib/http-client";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const TIME_CONTROL_OPTIONS = [60, 300, 600, 1500, 3600] as const;
+const PIECE_IMAGE_PATHS: Record<string, string> = {
+  wK: "/assets/chess/pieces/wK.svg",
+  wQ: "/assets/chess/pieces/wQ.svg",
+  wR: "/assets/chess/pieces/wR.svg",
+  wB: "/assets/chess/pieces/wB.svg",
+  wN: "/assets/chess/pieces/wN.svg",
+  wP: "/assets/chess/pieces/wP.svg",
+  bK: "/assets/chess/pieces/bK.svg",
+  bQ: "/assets/chess/pieces/bQ.svg",
+  bR: "/assets/chess/pieces/bR.svg",
+  bB: "/assets/chess/pieces/bB.svg",
+  bN: "/assets/chess/pieces/bN.svg",
+  bP: "/assets/chess/pieces/bP.svg",
+};
 
-const PIECE_LABELS: Record<string, string> = {
-  wK: "♚",
-  wQ: "♛",
-  wR: "♜",
-  wB: "♝",
-  wN: "♞",
-  wP: "♟",
-  bK: "♚",
-  bQ: "♛",
-  bR: "♜",
-  bB: "♝",
-  bN: "♞",
-  bP: "♟",
+const PIECE_CAPTURE_ORDER = ["Q", "R", "B", "N", "P"] as const;
+
+const INITIAL_PIECE_COUNTS: Record<ChessColor, Record<string, number>> = {
+  white: { K: 1, Q: 1, R: 2, B: 2, N: 2, P: 8 },
+  black: { K: 1, Q: 1, R: 2, B: 2, N: 2, P: 8 },
+};
+
+const PIECE_MATERIAL_VALUES: Record<string, number> = {
+  Q: 9,
+  R: 5,
+  B: 3,
+  N: 3,
+  P: 1,
 };
 
 type BotPlayAs = "white" | "black" | "random";
 type ViewMode = "menu" | "game";
+type BoardSize = "large" | "compact";
+
+type CaptureMaterialSummary = {
+  capturedByWhite: string[];
+  capturedByBlack: string[];
+  whiteMaterialPoints: number;
+  blackMaterialPoints: number;
+};
+
+type PlayerStripProps = {
+  color: ChessColor;
+  username: string;
+  clockSeconds: number;
+  isTurn: boolean;
+  capturedPieces: string[];
+  materialLead: number;
+};
 
 function squareName(rankIndex: number, fileIndex: number): string {
   const file = FILES[fileIndex];
@@ -100,6 +133,127 @@ function findKingSquare(board: string[][], color: ChessColor): string | null {
   return null;
 }
 
+function pieceType(piece: string): string | null {
+  const value = piece[1] ?? "";
+  if (["K", "Q", "R", "B", "N", "P"].includes(value)) {
+    return value;
+  }
+  return null;
+}
+
+function toPieceName(piece: string): string {
+  const color = piece.startsWith("w") ? "White" : "Black";
+  const kind = pieceType(piece);
+  const typeLabel =
+    kind === "K"
+      ? "King"
+      : kind === "Q"
+        ? "Queen"
+        : kind === "R"
+          ? "Rook"
+          : kind === "B"
+            ? "Bishop"
+            : kind === "N"
+              ? "Knight"
+              : "Pawn";
+  return `${color} ${typeLabel}`;
+}
+
+function getPieceAssetPath(piece: string): string | null {
+  return PIECE_IMAGE_PATHS[piece] ?? null;
+}
+
+function buildCaptureMaterialSummary(board: string[][]): CaptureMaterialSummary {
+  const currentCounts: Record<ChessColor, Record<string, number>> = {
+    white: { K: 0, Q: 0, R: 0, B: 0, N: 0, P: 0 },
+    black: { K: 0, Q: 0, R: 0, B: 0, N: 0, P: 0 },
+  };
+
+  for (const row of board) {
+    for (const squarePiece of row) {
+      if (!squarePiece) {
+        continue;
+      }
+      const color = getPieceColor(squarePiece);
+      const kind = pieceType(squarePiece);
+      if (!color || !kind) {
+        continue;
+      }
+      currentCounts[color][kind] += 1;
+    }
+  }
+
+  const capturedByWhite: string[] = [];
+  const capturedByBlack: string[] = [];
+  let whiteMaterialPoints = 0;
+  let blackMaterialPoints = 0;
+
+  for (const type of PIECE_CAPTURE_ORDER) {
+    const missingBlack = Math.max(0, INITIAL_PIECE_COUNTS.black[type] - currentCounts.black[type]);
+    for (let index = 0; index < missingBlack; index += 1) {
+      capturedByWhite.push(`b${type}`);
+      whiteMaterialPoints += PIECE_MATERIAL_VALUES[type] ?? 0;
+    }
+
+    const missingWhite = Math.max(0, INITIAL_PIECE_COUNTS.white[type] - currentCounts.white[type]);
+    for (let index = 0; index < missingWhite; index += 1) {
+      capturedByBlack.push(`w${type}`);
+      blackMaterialPoints += PIECE_MATERIAL_VALUES[type] ?? 0;
+    }
+  }
+
+  return {
+    capturedByWhite,
+    capturedByBlack,
+    whiteMaterialPoints,
+    blackMaterialPoints,
+  };
+}
+
+function PlayerStrip({
+  color,
+  username,
+  clockSeconds,
+  isTurn,
+  capturedPieces,
+  materialLead,
+}: PlayerStripProps): ReactElement {
+  return (
+    <div
+      className={`mx-auto flex w-full max-w-160 items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm ${
+        isTurn
+          ? "border-amber-400/70 bg-amber-500/15 text-amber-100"
+          : "border-zinc-700 bg-zinc-950/70 text-zinc-200"
+      }`}
+    >
+      <div className="min-w-0">
+        <p className="truncate font-medium">
+          {username} · {colorLabel(color)}
+        </p>
+        <div className="mt-1 flex min-h-5 items-center gap-1">
+          {capturedPieces.length === 0 ? (
+            <span className="text-xs text-zinc-400">No captures yet</span>
+          ) : (
+            capturedPieces.map((piece, index) => {
+              const imagePath = getPieceAssetPath(piece);
+              if (!imagePath) {
+                return null;
+              }
+              return (
+                <span key={`${piece}-${index}`} className="relative h-4.5 w-4.5">
+                  <Image src={imagePath} alt={toPieceName(piece)} fill sizes="18px" className="object-contain" />
+                </span>
+              );
+            })
+          )}
+          {materialLead > 0 ? <span className="ml-2 text-xs font-semibold text-emerald-300">+{materialLead}</span> : null}
+        </div>
+      </div>
+      <span className="shrink-0 font-semibold tracking-wider">{formatClock(clockSeconds)}</span>
+    </div>
+  );
+}
+
 function gameStatusLabel(state: ChessMatchState): string {
   const status = state.summary.status;
   if (status === "active") {
@@ -119,6 +273,19 @@ function gameStatusLabel(state: ChessMatchState): string {
   return `Draw · ${state.summary.result}`;
 }
 
+function movePieceLabelFromSan(san: string): string {
+  if (san.startsWith("O-O")) {
+    return "K";
+  }
+
+  const firstChar = san[0] ?? "";
+  if (["K", "Q", "R", "B", "N"].includes(firstChar)) {
+    return firstChar;
+  }
+
+  return "P";
+}
+
 export default function ChessPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("menu");
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -135,6 +302,8 @@ export default function ChessPage() {
   const [inviteColorPreference, setInviteColorPreference] =
     useState<InvitationColorPreference>("random");
   const [botPlayAs, setBotPlayAs] = useState<BotPlayAs>("random");
+  const [botDifficulty, setBotDifficulty] = useState<BotDifficulty>("medium");
+  const [boardSize, setBoardSize] = useState<BoardSize>("large");
   const [timeControlSeconds, setTimeControlSeconds] = useState<number>(600);
 
   const [isSendingInvitation, setIsSendingInvitation] = useState(false);
@@ -147,6 +316,10 @@ export default function ChessPage() {
   const [deniedSquare, setDeniedSquare] = useState<string | null>(null);
   const [invalidSquare, setInvalidSquare] = useState<string | null>(null);
   const [clockTick, setClockTick] = useState<number>(Date.now());
+  const [stableClock, setStableClock] = useState<{ white: number; black: number }>({
+    white: 0,
+    black: 0,
+  });
 
   const legalMovesSet = useMemo(() => new Set(match?.legalMoves ?? []), [match?.legalMoves]);
   const selectedMoveTargets = useMemo(() => {
@@ -225,31 +398,51 @@ export default function ChessPage() {
     const matchId = selectedMatchId;
 
     let disposed = false;
+    let refreshHandle: number | null = null;
+
+    function scheduleRefresh(delayMs: number): void {
+      if (disposed) {
+        return;
+      }
+      if (refreshHandle !== null) {
+        window.clearTimeout(refreshHandle);
+      }
+      refreshHandle = window.setTimeout(() => {
+        void refreshSelectedMatch();
+      }, delayMs);
+    }
 
     async function refreshSelectedMatch() {
       try {
         const state = await fetchChessMatch(matchId);
-        if (!disposed) {
-          setMatch(state);
+        if (disposed) {
+          return;
         }
+
+        setMatch(state);
+
+        const isWaitingForBotMove =
+          state.summary.mode === "bot" &&
+          state.summary.status === "active" &&
+          !state.canSubmitMoves;
+        scheduleRefresh(isWaitingForBotMove ? 1000 : 4000);
       } catch {
         if (!disposed) {
           setNotice("Could not refresh active match.");
+          scheduleRefresh(4000);
         }
       }
     }
 
     void refreshSelectedMatch();
 
-    const handle = window.setInterval(() => {
-      void refreshSelectedMatch();
-    }, 4000);
-
     return () => {
       disposed = true;
-      window.clearInterval(handle);
+      if (refreshHandle !== null) {
+        window.clearTimeout(refreshHandle);
+      }
     };
-    }, [selectedMatchId, viewMode]);
+  }, [selectedMatchId, viewMode]);
 
   useEffect(() => {
     const handle = window.setInterval(() => {
@@ -344,7 +537,7 @@ export default function ChessPage() {
   async function handleStartBot(): Promise<void> {
     setIsStartingBot(true);
     try {
-      const response = await startChessBot(botPlayAs, timeControlSeconds);
+      const response = await startChessBot(botPlayAs, botDifficulty, timeControlSeconds);
       setSelectedMatchId(response.match.matchId);
       await loadMatch(response.match.matchId);
       await refreshMenu();
@@ -405,6 +598,12 @@ export default function ChessPage() {
       return;
     }
 
+    const pieceOnTargetSquare = pieceAtSquare(square);
+    if (pieceOnTargetSquare && getPieceColor(pieceOnTargetSquare) === match.summary.turnColor) {
+      setSelectedFromSquare(square);
+      return;
+    }
+
     const promotion =
       (selectedFromSquare[1] === "7" && square[1] === "8") ||
       (selectedFromSquare[1] === "2" && square[1] === "1")
@@ -456,28 +655,65 @@ export default function ChessPage() {
     return findKingSquare(match.board, match.summary.turnColor);
   }, [match]);
 
-  const displayClock = useMemo(() => {
+  useEffect(() => {
     if (!match) {
-      return { white: 0, black: 0 };
+      return;
     }
 
     let white = match.summary.whiteTimeRemainingSeconds;
     let black = match.summary.blackTimeRemainingSeconds;
 
     if (match.summary.status === "active" && match.summary.clockStartedAt) {
-      const elapsed = Math.max(
-        0,
-        Math.floor((clockTick - new Date(match.summary.clockStartedAt).getTime()) / 1000),
-      );
-      if (match.summary.turnColor === "white") {
-        white = Math.max(0, white - elapsed);
-      } else {
-        black = Math.max(0, black - elapsed);
+      const startedAtMs = new Date(match.summary.clockStartedAt).getTime();
+      if (Number.isFinite(startedAtMs)) {
+        const elapsed = Math.max(0, Math.floor((clockTick - startedAtMs) / 1000));
+        if (match.summary.turnColor === "white") {
+          white = Math.max(0, white - elapsed);
+        } else {
+          black = Math.max(0, black - elapsed);
+        }
       }
     }
 
-    return { white, black };
+    setStableClock((previous) => {
+      if (match.summary.status !== "active") {
+        return { white, black };
+      }
+
+      if (match.summary.turnColor === "white") {
+        const shouldKeepPreviousWhite =
+          white === 0 && previous.white > 0 && match.summary.whiteTimeRemainingSeconds > 0;
+        return {
+          white: shouldKeepPreviousWhite ? previous.white : white,
+          black,
+        };
+      }
+
+      const shouldKeepPreviousBlack =
+        black === 0 && previous.black > 0 && match.summary.blackTimeRemainingSeconds > 0;
+      return {
+        white,
+        black: shouldKeepPreviousBlack ? previous.black : black,
+      };
+    });
   }, [clockTick, match]);
+
+  const displayClock = stableClock;
+
+  const lastMoveSquares = useMemo(() => {
+    if (!match || match.history.length === 0) {
+      return null;
+    }
+    const lastMove = match.history[match.history.length - 1];
+    const uci = lastMove?.uci ?? "";
+    if (uci.length < 4) {
+      return null;
+    }
+    return {
+      from: uci.slice(0, 2),
+      to: uci.slice(2, 4),
+    };
+  }, [match]);
 
   const topPlayer = useMemo(() => {
     if (!match) {
@@ -513,6 +749,32 @@ export default function ChessPage() {
         };
   }, [displayClock.black, displayClock.white, isFlipped, match]);
 
+  const captureMaterialSummary = useMemo(() => {
+    if (!match) {
+      return null;
+    }
+    return buildCaptureMaterialSummary(match.board);
+  }, [match]);
+
+  const materialLeaderColor = useMemo(() => {
+    if (!captureMaterialSummary) {
+      return null;
+    }
+    if (captureMaterialSummary.whiteMaterialPoints === captureMaterialSummary.blackMaterialPoints) {
+      return null;
+    }
+    return captureMaterialSummary.whiteMaterialPoints > captureMaterialSummary.blackMaterialPoints
+      ? ("white" as ChessColor)
+      : ("black" as ChessColor);
+  }, [captureMaterialSummary]);
+
+  const materialLeadPoints = useMemo(() => {
+    if (!captureMaterialSummary) {
+      return 0;
+    }
+    return Math.abs(captureMaterialSummary.whiteMaterialPoints - captureMaterialSummary.blackMaterialPoints);
+  }, [captureMaterialSummary]);
+
   return (
     <main className="mx-auto max-w-7xl px-6 pb-16 pt-10">
       <section className="rounded-3xl border border-zinc-800 bg-zinc-900/85 p-7 md:p-8">
@@ -520,7 +782,7 @@ export default function ChessPage() {
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-zinc-100">Chess</h1>
             <p className="mt-2 text-sm text-zinc-300">
-              Traditional chess with account invitations, self-play, and a basic bot mode.
+              Traditional chess with account invitations, self-play, and a configurable bot mode.
             </p>
           </div>
           <Link
@@ -587,6 +849,20 @@ export default function ChessPage() {
                 <option value="white">Play as White</option>
                 <option value="black">Play as Black</option>
               </select>
+
+              <label className="mt-3 block text-xs uppercase tracking-widest text-zinc-400">Bot difficulty</label>
+              <select
+                value={botDifficulty}
+                onChange={(event) => {
+                  setBotDifficulty(event.target.value as BotDifficulty);
+                }}
+                className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-sm text-zinc-100"
+              >
+                <option value="easy">Easy (Depth 1)</option>
+                <option value="medium">Medium (Depth 2)</option>
+                <option value="hard">Hard (Depth 3)</option>
+              </select>
+
               <button
                 type="button"
                 onClick={() => {
@@ -754,6 +1030,34 @@ export default function ChessPage() {
                   <p className="text-sm text-zinc-300">{gameStatusLabel(match)}</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800/80 p-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBoardSize("large");
+                      }}
+                      className={`rounded-md px-2 py-1 text-xs font-medium transition ${
+                        boardSize === "large"
+                          ? "bg-cyan-500/25 text-cyan-100"
+                          : "text-zinc-300 hover:bg-zinc-700"
+                      }`}
+                    >
+                      Large
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBoardSize("compact");
+                      }}
+                      className={`rounded-md px-2 py-1 text-xs font-medium transition ${
+                        boardSize === "compact"
+                          ? "bg-cyan-500/25 text-cyan-100"
+                          : "text-zinc-300 hover:bg-zinc-700"
+                      }`}
+                    >
+                      Compact
+                    </button>
+                  </div>
                   <span
                     className={`rounded-full border px-3 py-1 text-xs font-medium ${
                       match.canSubmitMoves
@@ -775,22 +1079,28 @@ export default function ChessPage() {
                 </div>
               </header>
 
-              {topPlayer ? (
-                <div
-                  className={`mx-auto mb-2 flex w-full max-w-160 items-center justify-between rounded-xl border px-3 py-2 text-sm ${
-                    match.summary.turnColor === topPlayer.color
-                      ? "border-amber-400/70 bg-amber-500/15 text-amber-100"
-                      : "border-zinc-700 bg-zinc-950/70 text-zinc-200"
-                  }`}
-                >
-                  <span className="font-medium">
-                    {topPlayer.username} · {colorLabel(topPlayer.color)}
-                  </span>
-                  <span className="font-semibold tracking-wider">{formatClock(topPlayer.clockSeconds)}</span>
+              {topPlayer && captureMaterialSummary ? (
+                <div className="mb-2">
+                  <PlayerStrip
+                    color={topPlayer.color}
+                    username={topPlayer.username}
+                    clockSeconds={topPlayer.clockSeconds}
+                    isTurn={match.summary.turnColor === topPlayer.color}
+                    capturedPieces={
+                      topPlayer.color === "white"
+                        ? captureMaterialSummary.capturedByWhite
+                        : captureMaterialSummary.capturedByBlack
+                    }
+                    materialLead={materialLeaderColor === topPlayer.color ? materialLeadPoints : 0}
+                  />
                 </div>
               ) : null}
 
-              <div className="mx-auto w-full max-w-140 rounded-2xl border border-zinc-700 bg-zinc-950/70 p-3">
+              <div
+                className={`mx-auto w-full rounded-2xl border border-zinc-700 bg-zinc-950/70 p-3 ${
+                  boardSize === "large" ? "max-w-3xl" : "max-w-140"
+                }`}
+              >
                 <div className="grid grid-cols-8 overflow-hidden rounded-lg border border-zinc-700">
                   {displayedBoard.map((rank, rankIndex) =>
                     rank.map((piece, fileIndex) => {
@@ -800,6 +1110,8 @@ export default function ChessPage() {
                       const denied = deniedSquare === square;
                       const invalid = invalidSquare === square;
                       const checked = checkedKingSquare === square;
+                      const isLastMoveFrom = lastMoveSquares?.from === square;
+                      const isLastMoveTo = lastMoveSquares?.to === square;
                       const hasPiece = Boolean(piece);
                       const baseTone = isLightSquare(rankIndex, fileIndex)
                         ? "bg-amber-200"
@@ -813,7 +1125,7 @@ export default function ChessPage() {
                             void handleSquareClick(square);
                           }}
                           disabled={!match.canSubmitMoves}
-                          className={`relative aspect-square border border-black/10 transition ${baseTone} ${selected ? "ring-4 ring-cyan-300 ring-inset" : ""} ${legalTarget ? "ring-2 ring-emerald-300/80 ring-inset" : ""} ${denied ? "ring-2 ring-amber-300 ring-inset" : ""} ${invalid ? "ring-2 ring-rose-300 ring-inset bg-rose-500/80" : ""} ${checked ? "ring-4 ring-rose-400 ring-inset" : ""} ${match.canSubmitMoves ? "hover:brightness-110" : "cursor-default opacity-95"}`}
+                          className={`relative aspect-square border border-black/10 transition ${baseTone} ${selected ? "ring-4 ring-cyan-300 ring-inset" : ""} ${legalTarget ? "ring-2 ring-emerald-300/80 ring-inset" : ""} ${denied ? "ring-2 ring-amber-300 ring-inset" : ""} ${invalid ? "ring-2 ring-rose-300 ring-inset bg-rose-500/80" : ""} ${checked ? "ring-4 ring-rose-400 ring-inset" : ""} ${match.canSubmitMoves ? "hover:brightness-110" : "cursor-default opacity-95"} ${isLastMoveFrom ? "after:pointer-events-none after:absolute after:inset-1 after:rounded-sm after:border after:border-sky-200/45" : ""} ${isLastMoveTo ? "after:pointer-events-none after:absolute after:inset-1 after:rounded-sm after:border after:border-sky-100/80" : ""}`}
                           aria-label={`Square ${square}`}
                         >
                           {legalTarget ? (
@@ -825,9 +1137,19 @@ export default function ChessPage() {
                           ) : null}
                           {piece ? (
                             <span
-                              className={`relative z-10 inline-block select-none text-5xl leading-none transition-transform duration-150 ease-out md:text-6xl ${selected ? "-translate-y-1 scale-110" : "translate-y-0 scale-100"} ${piece.startsWith("w") ? "text-white [text-shadow:0_1px_0_rgba(255,255,255,0.95),0_2px_3px_rgba(0,0,0,0.85)]" : "text-black [text-shadow:0_1px_0_rgba(0,0,0,0.85)]"}`}
+                              className={`relative z-10 inline-block select-none transition-transform duration-150 ease-out ${
+                                boardSize === "large" ? "h-16 w-16 md:h-20 md:w-20" : "h-12 w-12 md:h-14 md:w-14"
+                              } ${selected ? "-translate-y-1 scale-110" : "translate-y-0 scale-100"}`}
                             >
-                              {PIECE_LABELS[piece] ?? ""}
+                              {getPieceAssetPath(piece) ? (
+                                <Image
+                                  src={getPieceAssetPath(piece) ?? ""}
+                                  alt={toPieceName(piece)}
+                                  fill
+                                  sizes={boardSize === "large" ? "(min-width: 768px) 80px, 64px" : "(min-width: 768px) 56px, 48px"}
+                                  className="object-contain"
+                                />
+                              ) : null}
                             </span>
                           ) : null}
                         </button>
@@ -842,18 +1164,20 @@ export default function ChessPage() {
                 </div>
               </div>
 
-              {bottomPlayer ? (
-                <div
-                  className={`mx-auto mt-2 flex w-full max-w-160 items-center justify-between rounded-xl border px-3 py-2 text-sm ${
-                    match.summary.turnColor === bottomPlayer.color
-                      ? "border-amber-400/70 bg-amber-500/15 text-amber-100"
-                      : "border-zinc-700 bg-zinc-950/70 text-zinc-200"
-                  }`}
-                >
-                  <span className="font-medium">
-                    {bottomPlayer.username} · {colorLabel(bottomPlayer.color)}
-                  </span>
-                  <span className="font-semibold tracking-wider">{formatClock(bottomPlayer.clockSeconds)}</span>
+              {bottomPlayer && captureMaterialSummary ? (
+                <div className="mt-2">
+                  <PlayerStrip
+                    color={bottomPlayer.color}
+                    username={bottomPlayer.username}
+                    clockSeconds={bottomPlayer.clockSeconds}
+                    isTurn={match.summary.turnColor === bottomPlayer.color}
+                    capturedPieces={
+                      bottomPlayer.color === "white"
+                        ? captureMaterialSummary.capturedByWhite
+                        : captureMaterialSummary.capturedByBlack
+                    }
+                    materialLead={materialLeaderColor === bottomPlayer.color ? materialLeadPoints : 0}
+                  />
                 </div>
               ) : null}
 
@@ -865,7 +1189,9 @@ export default function ChessPage() {
                   <ol className="mt-2 grid max-h-56 gap-1 overflow-auto pr-2 text-sm text-zinc-200 sm:grid-cols-2">
                     {match.history.map((move) => (
                       <li key={`${move.moveNumber}-${move.uci}`} className="rounded-lg bg-zinc-900/80 px-2 py-1">
-                        {move.moveNumber}. {move.san}
+                        <span className="text-zinc-400">{move.moveNumber}.</span>{" "}
+                        <span className="font-semibold text-zinc-100">{movePieceLabelFromSan(move.san)}</span>{" "}
+                        <span>{move.san}</span>
                       </li>
                     ))}
                   </ol>

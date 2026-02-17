@@ -20,7 +20,7 @@ DEFAULT_WORDLE_GAME: dict[str, str | int] = {
 DEFAULT_CHESS_GAME: dict[str, str | int] = {
     "slug": "chess",
     "name": "Chess",
-    "summary": "Play traditional chess with account invitations, self-play, and a basic built-in bot.",
+    "summary": "Play traditional chess with account invitations, self-play, and a configurable built-in bot.",
     "status": "playable",
     "accent": "from-amber-500 to-orange-500",
     "estimated_session_minutes": 20,
