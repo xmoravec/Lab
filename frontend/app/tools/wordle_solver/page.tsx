@@ -5,44 +5,14 @@ import { useMemo, useState } from "react";
 
 import {
   solveWordle,
-  type SolverClueRow,
   type SolverDifficulty,
   type WordleSolverResponse,
 } from "@/app/tools/lib/api";
 
-type UiClueRow = {
-  id: number;
-  greenLetters: string[];
-  yellowLetters: string;
-  grayLetters: string;
-};
-
 const WORD_LENGTH = 5;
-const MAX_ROWS = 6;
-
-function makeRow(id: number): UiClueRow {
-  return {
-    id,
-    greenLetters: Array.from({ length: WORD_LENGTH }, () => ""),
-    yellowLetters: "",
-    grayLetters: "",
-  };
-}
 
 function sanitizeLetters(value: string): string {
   return value.replace(/[^a-zA-Z]/g, "").toLowerCase();
-}
-
-function greenPattern(row: UiClueRow): string {
-  return row.greenLetters.map((letter) => letter || "_").join("");
-}
-
-function rowIsUsed(row: UiClueRow): boolean {
-  return (
-    row.greenLetters.some((letter) => letter.length > 0) ||
-    row.yellowLetters.length > 0 ||
-    row.grayLetters.length > 0
-  );
 }
 
 function toLetterSet(value: string): Set<string> {
@@ -53,39 +23,29 @@ function overlapLetters(left: Set<string>, right: Set<string>): string[] {
   return [...left].filter((letter) => right.has(letter)).sort();
 }
 
-function collectValidationIssues(rows: UiClueRow[]): string[] {
+function collectValidationIssues(
+  greenLetters: string[],
+  yellowLetters: string,
+  grayLetters: string,
+): string[] {
   const issues: string[] = [];
-  const includedLetters = new Set<string>();
-  const excludedLetters = new Set<string>();
+  const greens = new Set(greenLetters.filter((letter) => letter.length > 0));
+  const yellows = toLetterSet(yellowLetters);
+  const grays = toLetterSet(grayLetters);
 
-  rows.forEach((row, rowIndex) => {
-    const greens = new Set(row.greenLetters.filter((letter) => letter.length > 0));
-    const yellows = toLetterSet(row.yellowLetters);
-    const grays = toLetterSet(row.grayLetters);
+  const greenYellowOverlap = overlapLetters(greens, yellows);
+  if (greenYellowOverlap.length > 0) {
+    issues.push(`Letters cannot be both green and yellow (${greenYellowOverlap.join(", ")}).`);
+  }
 
-    const greenYellowOverlap = overlapLetters(greens, yellows);
-    if (greenYellowOverlap.length > 0) {
-      issues.push(`Row ${rowIndex + 1}: letters cannot be both green and yellow (${greenYellowOverlap.join(", ")}).`);
-    }
+  const greenGrayOverlap = overlapLetters(greens, grays);
+  if (greenGrayOverlap.length > 0) {
+    issues.push(`Letters cannot be both green and gray (${greenGrayOverlap.join(", ")}).`);
+  }
 
-    const greenGrayOverlap = overlapLetters(greens, grays);
-    if (greenGrayOverlap.length > 0) {
-      issues.push(`Row ${rowIndex + 1}: letters cannot be both green and gray (${greenGrayOverlap.join(", ")}).`);
-    }
-
-    const yellowGrayOverlap = overlapLetters(yellows, grays);
-    if (yellowGrayOverlap.length > 0) {
-      issues.push(`Row ${rowIndex + 1}: letters cannot be both yellow and gray (${yellowGrayOverlap.join(", ")}).`);
-    }
-
-    greens.forEach((letter) => includedLetters.add(letter));
-    yellows.forEach((letter) => includedLetters.add(letter));
-    grays.forEach((letter) => excludedLetters.add(letter));
-  });
-
-  const globalOverlap = overlapLetters(includedLetters, excludedLetters);
-  if (globalOverlap.length > 0) {
-    issues.push(`Global conflict: letters cannot be both included and excluded (${globalOverlap.join(", ")}).`);
+  const yellowGrayOverlap = overlapLetters(yellows, grays);
+  if (yellowGrayOverlap.length > 0) {
+    issues.push(`Letters cannot be both yellow and gray (${yellowGrayOverlap.join(", ")}).`);
   }
 
   return issues;
@@ -93,88 +53,58 @@ function collectValidationIssues(rows: UiClueRow[]): string[] {
 
 export default function WordleSolverToolPage() {
   const [difficulty, setDifficulty] = useState<SolverDifficulty>("common");
-  const [rows, setRows] = useState<UiClueRow[]>([makeRow(1), makeRow(2), makeRow(3)]);
+  const [greenLetters, setGreenLetters] = useState<string[]>(Array.from({ length: WORD_LENGTH }, () => ""));
+  const [yellowLetters, setYellowLetters] = useState("");
+  const [grayLetters, setGrayLetters] = useState("");
   const [maxSuggestions, setMaxSuggestions] = useState(12);
   const [isSolving, setIsSolving] = useState(false);
   const [message, setMessage] = useState("Enter clue rows, then press Check.");
   const [result, setResult] = useState<WordleSolverResponse | null>(null);
 
-  const usedCount = useMemo(() => rows.filter(rowIsUsed).length, [rows]);
-  const validationIssues = useMemo(() => collectValidationIssues(rows), [rows]);
+  const hasAnyClue = useMemo(
+    () =>
+      greenLetters.some((letter) => letter.length > 0) ||
+      yellowLetters.length > 0 ||
+      grayLetters.length > 0,
+    [greenLetters, grayLetters, yellowLetters],
+  );
+  const validationIssues = useMemo(
+    () => collectValidationIssues(greenLetters, yellowLetters, grayLetters),
+    [grayLetters, greenLetters, yellowLetters],
+  );
 
-  function updateGreenLetter(rowId: number, index: number, value: string): void {
+  function updateGreenLetter(index: number, value: string): void {
     const nextLetter = sanitizeLetters(value).slice(0, 1);
-    setRows((previous) =>
-      previous.map((row) => {
-        if (row.id !== rowId) {
-          return row;
+    setGreenLetters((previous) =>
+      previous.map((letter, letterIndex) => {
+        if (letterIndex !== index) {
+          return letter;
         }
-
-        const nextGreenLetters = row.greenLetters.map((letter, letterIndex) => {
-          if (letterIndex !== index) {
-            return letter;
-          }
-          return nextLetter;
-        });
-
-        return {
-          ...row,
-          greenLetters: nextGreenLetters,
-        };
+        return nextLetter;
       }),
     );
   }
 
-  function updateRowText(rowId: number, field: "yellowLetters" | "grayLetters", value: string): void {
+  function updateRowText(field: "yellowLetters" | "grayLetters", value: string): void {
     const nextValue = sanitizeLetters(value);
-    setRows((previous) =>
-      previous.map((row) =>
-        row.id === rowId
-          ? {
-              ...row,
-              [field]: nextValue,
-            }
-          : row,
-      ),
-    );
-  }
-
-  function addRow(): void {
-    setRows((previous) => {
-      if (previous.length >= MAX_ROWS) {
-        return previous;
-      }
-      const nextId = previous[previous.length - 1]?.id ?? 0;
-      return [...previous, makeRow(nextId + 1)];
-    });
-  }
-
-  function removeRow(rowId: number): void {
-    setRows((previous) => {
-      if (previous.length <= 1) {
-        return previous;
-      }
-      return previous.filter((row) => row.id !== rowId);
-    });
+    if (field === "yellowLetters") {
+      setYellowLetters(nextValue);
+      return;
+    }
+    setGrayLetters(nextValue);
   }
 
   function resetRows(): void {
-    setRows([makeRow(1), makeRow(2), makeRow(3)]);
+    setGreenLetters(Array.from({ length: WORD_LENGTH }, () => ""));
+    setYellowLetters("");
+    setGrayLetters("");
     setResult(null);
     setMessage("Solver reset. Add clues and check again.");
   }
 
   async function runSolver(): Promise<void> {
-    const clueRows: SolverClueRow[] = rows
-      .filter(rowIsUsed)
-      .map((row) => ({
-        greenPattern: greenPattern(row),
-        yellowLetters: row.yellowLetters,
-        grayLetters: row.grayLetters,
-      }));
-
-    if (clueRows.length === 0) {
-      setMessage("Add at least one clue row before checking.");
+    if (!hasAnyClue) {
+      setMessage("Add at least one clue before checking.");
       return;
     }
 
@@ -187,7 +117,13 @@ export default function WordleSolverToolPage() {
     try {
       const response = await solveWordle({
         difficulty,
-        clueRows,
+        clueRows: [
+          {
+            greenPattern: greenLetters.map((letter) => letter || "_").join(""),
+            yellowLetters,
+            grayLetters,
+          },
+        ],
         maxSuggestions,
       });
       setResult(response);
@@ -211,7 +147,7 @@ export default function WordleSolverToolPage() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-300">Tools · Wordle</p>
           <h1 className="mt-2 text-4xl font-black tracking-tight text-zinc-100">Wordle Solver</h1>
           <p className="mt-2 text-sm text-zinc-400">
-            Enter known clues: green letters by position, yellow letters contained somewhere, and gray letters excluded.
+            Solve one target word using three clue lanes: exact positions (green), included letters (yellow), and excluded letters (gray).
           </p>
         </div>
         <Link href="/tools" className="rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
@@ -259,60 +195,49 @@ export default function WordleSolverToolPage() {
           </div>
         </div>
 
-        <div className="space-y-3">
-          {rows.map((row) => (
-            <article key={row.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  {row.greenLetters.map((letter, index) => (
-                    <input
-                      key={`${row.id}-g-${index}`}
-                      value={letter.toUpperCase()}
-                      onChange={(event) => updateGreenLetter(row.id, index, event.target.value)}
-                      maxLength={1}
-                      placeholder="_"
-                      className="h-10 w-10 rounded-md border border-emerald-500/50 bg-emerald-500/10 text-center text-sm font-black uppercase text-emerald-100"
-                      title={`Green position ${index + 1}`}
-                    />
-                  ))}
-                </div>
-
+        <div className="space-y-4">
+          <article className="rounded-2xl border border-emerald-500/40 bg-emerald-500/8 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-300">Green letters</p>
+            <p className="mt-1 text-xs text-emerald-200/80">Known fixed positions. Leave blank for unknown slots.</p>
+            <div className="mt-3 flex items-center gap-1.5">
+              {greenLetters.map((letter, index) => (
                 <input
-                  value={row.yellowLetters.toUpperCase()}
-                  onChange={(event) => updateRowText(row.id, "yellowLetters", event.target.value)}
-                  placeholder="Yellow letters"
-                  className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm uppercase tracking-[0.08em] text-amber-100"
+                  key={`green-${index}`}
+                  value={letter.toUpperCase()}
+                  onChange={(event) => updateGreenLetter(index, event.target.value)}
+                  maxLength={1}
+                  placeholder="_"
+                  className="h-11 w-11 rounded-md border border-emerald-500/50 bg-emerald-500/10 text-center text-sm font-black uppercase text-emerald-100"
+                  title={`Green position ${index + 1}`}
                 />
+              ))}
+            </div>
+          </article>
 
-                <input
-                  value={row.grayLetters.toUpperCase()}
-                  onChange={(event) => updateRowText(row.id, "grayLetters", event.target.value)}
-                  placeholder="Gray letters"
-                  className="rounded-md border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm uppercase tracking-[0.08em] text-zinc-200"
-                />
+          <article className="rounded-2xl border border-amber-500/40 bg-amber-500/8 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-amber-300">Yellow letters</p>
+            <p className="mt-1 text-xs text-amber-200/80">Letters that must exist in the word, position unknown.</p>
+            <input
+              value={yellowLetters.toUpperCase()}
+              onChange={(event) => updateRowText("yellowLetters", event.target.value)}
+              placeholder="e.g. RTA"
+              className="mt-3 w-full rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm uppercase tracking-[0.08em] text-amber-100"
+            />
+          </article>
 
-                <button
-                  type="button"
-                  onClick={() => removeRow(row.id)}
-                  disabled={rows.length <= 1}
-                  className="rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-100 hover:bg-rose-500/20 disabled:opacity-60"
-                >
-                  Remove
-                </button>
-              </div>
-            </article>
-          ))}
+          <article className="rounded-2xl border border-zinc-600 bg-zinc-800/40 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-300">Gray letters</p>
+            <p className="mt-1 text-xs text-zinc-400">Letters excluded from the target word.</p>
+            <input
+              value={grayLetters.toUpperCase()}
+              onChange={(event) => updateRowText("grayLetters", event.target.value)}
+              placeholder="e.g. SLM"
+              className="mt-3 w-full rounded-md border border-zinc-600 bg-zinc-800 px-3 py-2 text-sm uppercase tracking-[0.08em] text-zinc-200"
+            />
+          </article>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={addRow}
-            disabled={rows.length >= MAX_ROWS}
-            className="rounded-md border border-cyan-500/50 bg-cyan-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-60"
-          >
-            Add row
-          </button>
           <button
             type="button"
             onClick={() => void runSolver()}
@@ -331,7 +256,7 @@ export default function WordleSolverToolPage() {
         </div>
 
         <p className="mt-4 text-sm text-zinc-300">{message}</p>
-        <p className="mt-1 text-xs text-zinc-500">{usedCount} clue row(s) active.</p>
+        <p className="mt-1 text-xs text-zinc-500">Single-word mode active.</p>
         {validationIssues.length > 0 ? (
           <div className="mt-4 rounded-xl border border-rose-500/50 bg-rose-500/10 p-3">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-200">Validation issues</p>
