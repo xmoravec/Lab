@@ -123,6 +123,21 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Admin reveal now resolves by `gameId` across users (including guest in-memory rounds) and requires both admin role and admin-mode toggle.
 - Admin-only actions also require explicit admin mode enablement from the frontend header toggle. The toggle state is held in an HttpOnly cookie and forwarded as trusted internal header `x-admin-mode: on`.
 
+### Chess module
+
+- Backend Chess implementation is encapsulated under `backend/app/games/chess/`.
+- `python-chess` is used as authoritative game-rules engine for legal moves, game-state transitions, check/checkmate/stalemate detection, and FEN continuity.
+- If `python-chess` is temporarily unavailable in runtime (e.g., stale container image), Chess actions return a clear `503` service error while core app routes (including homepage/catalog) remain available.
+- Mongo collections:
+  - `chess_invitations` for account-to-account invitation workflow
+  - `chess_matches` for persisted match state, move history, and outcome metadata
+- Multiplayer is implemented as async turn-based flow (DB-backed state; no WebSocket requirement in phase 1).
+- Invitation policy allows self-invitations only for admin accounts.
+- Match modes currently supported:
+  - `multiplayer` (invitation-based account matches)
+  - `self-play` (same account controls both colors)
+  - `bot` (single-player against a basic built-in heuristic bot)
+
 ### Leaderboards module
 
 - Public leaderboard endpoint is exposed under `/api/leaderboards/{gameSlug}`.
@@ -150,6 +165,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Wordle Solver tool UI is served at `/tools/wordle_solver` with multi-row green/yellow/gray clue inputs, ranked suggestions, and candidate previews.
 - Dev Log page has been removed from the product navigation and route surface.
 - Wordle UI is encapsulated under `frontend/app/games/wordle/` and now consumes authenticated Next.js proxy routes.
+- Chess UI is encapsulated under `frontend/app/games/chess/` and consumes one authenticated Next.js proxy route at `frontend/app/api/chess/route.ts`.
 - Wordle pre-game menu exposes a subtle board-width mode control (`Classic (5)` default, `Auto` lab mode) while keeping 5-letter gameplay as the primary experience.
 
 ### Authenticated proxy routing
@@ -175,6 +191,20 @@ This gives a deterministic “ready” signal and a reusable function for future
 - `POST /api/tools/wordle_solver/solve`
   - Public tools endpoint under dedicated backend module `app/tools/wordle_solver/`.
   - Applies provided green/yellow/gray clue-row constraints, rejects contradictory clues, and returns matching candidate count, ranked next-word suggestions, and a candidate preview list.
+
+## Chess API
+
+- `POST /api/games/chess`
+  - Single action endpoint for all Chess page state transitions and mutations.
+  - Action payload (`action`) supports:
+    - `bootstrap` (menu context)
+    - `send-invitation`
+    - `respond-invitation`
+    - `start-self-play`
+    - `start-bot`
+    - `load-match`
+    - `submit-move`
+  - Response bundles user-context state (`menu`) and action-specific results (`matchState`, `moveResult`, etc.) so the page can stay synchronized from one route.
 
 ## Auth and leaderboard APIs
 
@@ -254,6 +284,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Mongo-backed game catalog (collection: `games`)
 - NextAuth accounts (credentials + Google OAuth wiring) with backend user persistence
 - Personalized Wordle history/state per authenticated user
+- Chess gameplay with invitation-driven multiplayer, self-play mode, and basic bot matches
 - Public Wordle ELO leaderboard and dedicated frontend leaderboard page
 - Playable Wordle is fully featured in Home and Games surfaces with account/leaderboard CTAs
 - Typed Next.js frontend and typed API client

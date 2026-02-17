@@ -34,7 +34,12 @@ function statusLabel(status: string): string {
 }
 
 export function GameCard({ game, compact = false, featured = false }: GameCardProps) {
-  const detailsHref = game.slug === "wordle" ? "/games/wordle" : `/games#${game.slug}`;
+  const detailsHref =
+    game.slug === "wordle"
+      ? "/games/wordle"
+      : game.slug === "chess"
+        ? "/games/chess"
+        : `/games#${game.slug}`;
   const playable = game.status.trim().toLowerCase() === "playable";
   const actionLabel = playable ? "Play now" : "View details";
 
