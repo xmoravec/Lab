@@ -13,6 +13,20 @@ COLLECTION_NAME = "wordle_games"
 
 
 class WordleRepository:
+    def __init__(self) -> None:
+        self._guest_games_by_user: dict[str, dict[str, dict[str, Any]]] = {}
+
+    @staticmethod
+    def _is_guest_user(user_id: str) -> bool:
+        return user_id.startswith("guest:")
+
+    def _guest_bucket(self, user_id: str) -> dict[str, dict[str, Any]]:
+        bucket = self._guest_games_by_user.get(user_id)
+        if bucket is None:
+            bucket = {}
+            self._guest_games_by_user[user_id] = bucket
+        return bucket
+
     def _collection(self) -> AsyncIOMotorCollection[dict[str, Any]]:
         if mongo_manager.db is None:
             raise RuntimeError("Mongo database is not initialized")
@@ -21,6 +35,7 @@ class WordleRepository:
 
     async def create_game(
         self,
+        user_id: str,
         difficulty: WordleDifficulty,
         target_word: str,
         max_attempts: int,
@@ -29,6 +44,7 @@ class WordleRepository:
         now = datetime.now(timezone.utc)
         game_document: dict[str, Any] = {
             "game_id": str(uuid4()),
+            "user_id": user_id,
             "difficulty": difficulty.value,
             "target_word": target_word,
             "status": WordleGameStatus.IN_PROGRESS.value,
@@ -39,31 +55,64 @@ class WordleRepository:
             "started_at": now,
             "completed_at": None,
         }
+        if self._is_guest_user(user_id):
+            self._guest_bucket(user_id)[game_document["game_id"]] = game_document
+            return game_document
+
         await self._collection().insert_one(game_document)
         return game_document
 
-    async def get_game(self, game_id: str) -> dict[str, Any] | None:
-        return await self._collection().find_one({"game_id": game_id})
+    async def get_game(self, game_id: str, user_id: str) -> dict[str, Any] | None:
+        if self._is_guest_user(user_id):
+            return self._guest_bucket(user_id).get(game_id)
+
+        return await self._collection().find_one({"game_id": game_id, "user_id": user_id})
 
     async def save_game(self, game_document: dict[str, Any]) -> None:
+        user_id = str(game_document["user_id"])
+        if self._is_guest_user(user_id):
+            self._guest_bucket(user_id)[str(game_document["game_id"])] = game_document
+            return
+
         await self._collection().replace_one(
-            {"game_id": game_document["game_id"]},
+            {"game_id": game_document["game_id"], "user_id": game_document["user_id"]},
             game_document,
             upsert=False,
         )
 
-    async def get_latest_in_progress(self) -> dict[str, Any] | None:
+    async def get_latest_in_progress(self, user_id: str) -> dict[str, Any] | None:
+        if self._is_guest_user(user_id):
+            in_progress_games = [
+                game
+                for game in self._guest_bucket(user_id).values()
+                if game["status"] == WordleGameStatus.IN_PROGRESS.value
+            ]
+            if not in_progress_games:
+                return None
+            return max(in_progress_games, key=lambda game: game["started_at"])
+
         return await self._collection().find_one(
-            {"status": WordleGameStatus.IN_PROGRESS.value},
+            {"status": WordleGameStatus.IN_PROGRESS.value, "user_id": user_id},
             sort=[("started_at", -1)],
         )
 
     async def list_recent_games(self, limit: int = 40) -> list[dict[str, Any]]:
         return await self._collection().find({}).sort("started_at", -1).to_list(length=limit)
 
-    async def list_recent_finished_games(self, limit: int = 40) -> list[dict[str, Any]]:
+    async def list_recent_finished_games(self, user_id: str, limit: int = 40) -> list[dict[str, Any]]:
+        if self._is_guest_user(user_id):
+            finished_games = [
+                game
+                for game in self._guest_bucket(user_id).values()
+                if game["status"] in {WordleGameStatus.WON.value, WordleGameStatus.LOST.value}
+            ]
+            return sorted(finished_games, key=lambda game: game["started_at"], reverse=True)[:limit]
+
         return await self._collection().find(
-            {"status": {"$in": [WordleGameStatus.WON.value, WordleGameStatus.LOST.value]}},
+            {
+                "user_id": user_id,
+                "status": {"$in": [WordleGameStatus.WON.value, WordleGameStatus.LOST.value]},
+            },
         ).sort("started_at", -1).to_list(length=limit)
 
 

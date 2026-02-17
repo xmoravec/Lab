@@ -58,6 +58,7 @@ async def get_home_content() -> HomeContentResponse:
         highlights=[
             "FastAPI backend as source of truth",
             "Next.js frontend with typed contracts",
-            "Mongo-backed experiments and progression",
+            "Personalized accounts, history, and Wordle progression",
+            "Global leaderboards with cross-game expansion path",
         ],
     )

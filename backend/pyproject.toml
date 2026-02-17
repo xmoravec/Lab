@@ -25,3 +25,10 @@ module = [
   "wordfreq.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+  "bcrypt",
+  "bcrypt.*",
+]
+ignore_missing_imports = true

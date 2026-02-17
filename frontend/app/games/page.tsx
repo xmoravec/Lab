@@ -1,8 +1,12 @@
+import Link from "next/link";
+
+import { auth } from "@/auth";
 import { GameCard } from "@/components/game-card";
 import { SectionTitle } from "@/components/section-title";
 import { fetchGamesCatalog } from "@/lib/content-api";
 
 export default async function GamesPage() {
+  const session = await auth();
   const games = await fetchGamesCatalog();
   const playableGames = games.items.filter((game) => game.status.toLowerCase() === "playable");
   const upcomingGames = games.items.filter((game) => game.status.toLowerCase() !== "playable");
@@ -28,6 +32,23 @@ export default async function GamesPage() {
             <p className="text-xs uppercase tracking-[0.12em] text-amber-300">In Progress</p>
             <p className="mt-1 text-2xl font-semibold text-amber-100">{upcomingGames.length}</p>
           </article>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Link
+            href="/leaderboards"
+            className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/20"
+          >
+            View leaderboards
+          </Link>
+          {!session?.user?.id ? (
+            <Link
+              href="/account/sign-up"
+              className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/20"
+            >
+              Create account for personalized history
+            </Link>
+          ) : null}
         </div>
       </section>
 

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     mongo_db_name: str = "lab"
     frontend_probe_url: str = "http://frontend:3000"
     frontend_probe_timeout_seconds: float = 1.5
+    internal_auth_secret: str = "lab-internal-dev-secret"
 
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 

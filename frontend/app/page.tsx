@@ -1,14 +1,18 @@
 import Link from "next/link";
 
+import { auth } from "@/auth";
 import { GameCard } from "@/components/game-card";
 import { SectionTitle } from "@/components/section-title";
-import { fetchHomeContent } from "@/lib/content-api";
+import { fetchHomeContent, fetchWordleLeaderboard } from "@/lib/content-api";
 
 export default async function HomePage() {
+  const session = await auth();
   const home = await fetchHomeContent();
+  const leaderboard = await fetchWordleLeaderboard();
   const playableGames = home.featuredGames.filter((game) => game.status.toLowerCase() === "playable");
   const spotlightGame = playableGames[0] ?? home.featuredGames[0] ?? null;
   const upcomingGames = home.featuredGames.filter((game) => game.slug !== spotlightGame?.slug);
+  const leaderboardLeader = leaderboard.entries[0] ?? null;
 
   return (
     <main className="mx-auto max-w-6xl px-6 pb-16 pt-10">
@@ -19,13 +23,28 @@ export default async function HomePage() {
         </h1>
         <p className="mt-4 max-w-2xl text-base text-zinc-300">{home.heroSubtitle}</p>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Link
             href="/games/wordle"
             className="rounded-2xl border border-fuchsia-500/40 bg-fuchsia-500/15 px-5 py-4 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/25"
           >
             Play Wordle
           </Link>
+          {session?.user?.id ? (
+            <Link
+              href="/leaderboards"
+              className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-4 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20"
+            >
+              View leaderboards
+            </Link>
+          ) : (
+            <Link
+              href="/account/sign-up"
+              className="rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-5 py-4 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/20"
+            >
+              Create account
+            </Link>
+          )}
           <Link
             href="/games"
             className="rounded-2xl border border-zinc-700 bg-zinc-950/70 px-5 py-4 text-sm font-semibold text-zinc-100 transition hover:border-zinc-500"
@@ -57,6 +76,44 @@ export default async function HomePage() {
           <GameCard game={spotlightGame} featured />
         </section>
       ) : null}
+
+      <section className="mt-10 grid gap-4 md:grid-cols-2">
+        <article className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-300">Player Identity</p>
+          <h2 className="mt-2 text-xl font-semibold text-zinc-100">
+            {session?.user?.id ? `Welcome back, @${session.user.username}` : "Sign in for personalized progress"}
+          </h2>
+          <p className="mt-2 text-sm text-zinc-400">
+            Keep personal Wordle history, continue active rounds, and climb shared rankings.
+          </p>
+          <div className="mt-4">
+            <Link
+              href={session?.user?.id ? "/games/wordle" : "/account/sign-in"}
+              className="rounded-lg border border-zinc-700 bg-zinc-950/80 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500"
+            >
+              {session?.user?.id ? "Continue Wordle" : "Sign in"}
+            </Link>
+          </div>
+        </article>
+
+        <article className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-fuchsia-300">Leaderboard Pulse</p>
+          <h2 className="mt-2 text-xl font-semibold text-zinc-100">Wordle ELO is live</h2>
+          <p className="mt-2 text-sm text-zinc-400">
+            {leaderboardLeader
+              ? `Current #1 is @${leaderboardLeader.username} with ${leaderboardLeader.eloScore} ELO.`
+              : "No entries yet. Be the first ranked player."}
+          </p>
+          <div className="mt-4">
+            <Link
+              href="/leaderboards"
+              className="rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-2 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-500/20"
+            >
+              Open leaderboards
+            </Link>
+          </div>
+        </article>
+      </section>
 
       <section className="mt-10">
         <div className="mb-4 flex items-end justify-between gap-4">

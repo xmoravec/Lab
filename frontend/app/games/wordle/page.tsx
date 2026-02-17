@@ -139,9 +139,10 @@ export default function WordlePage() {
         } else {
           setNotice("Choose a difficulty and hit Play.");
         }
-      } catch {
+      } catch (error) {
         console.error("Failed to bootstrap Wordle menu", {
           location: "WordlePage.bootstrap",
+          error,
         });
         if (!disposed) {
           setNotice("Could not load Wordle menu right now.");

@@ -1,4 +1,4 @@
-import { requestJson } from "@/lib/http-client";
+import { requestAppJson } from "@/lib/app-http-client";
 
 export type WordleDifficulty = "common" | "extended";
 export type TileState = "absent" | "present" | "correct";
@@ -46,14 +46,14 @@ export type GuessWordleResponse = {
 };
 
 export async function fetchWordleMenu(): Promise<WordleMenuResponse> {
-  return requestJson<WordleMenuResponse>("/api/games/wordle/menu");
+  return requestAppJson<WordleMenuResponse>("/api/wordle/menu");
 }
 
 export async function startWordleGame(
   difficulty: WordleDifficulty,
   forceNew = false,
 ): Promise<StartWordleResponse> {
-  return requestJson<StartWordleResponse>("/api/games/wordle/start", {
+  return requestAppJson<StartWordleResponse>("/api/wordle/start", {
     method: "POST",
     body: JSON.stringify({ difficulty, forceNew }),
   });
@@ -63,7 +63,7 @@ export async function submitWordleGuess(
   gameId: string,
   guess: string,
 ): Promise<GuessWordleResponse> {
-  return requestJson<GuessWordleResponse>("/api/games/wordle/guess", {
+  return requestAppJson<GuessWordleResponse>("/api/wordle/guess", {
     method: "POST",
     body: JSON.stringify({ gameId, guess }),
   });

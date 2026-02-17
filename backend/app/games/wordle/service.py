@@ -96,12 +96,12 @@ def _to_game_state(game_document: dict[str, Any], include_answer: bool) -> Wordl
 
 
 class WordleService:
-    async def get_menu(self) -> WordleMenuResponse:
+    async def get_menu(self, user_id: str) -> WordleMenuResponse:
         try:
-            active_game_document = await wordle_repository.get_latest_in_progress()
-            history_documents = await wordle_repository.list_recent_finished_games()
+            active_game_document = await wordle_repository.get_latest_in_progress(user_id=user_id)
+            history_documents = await wordle_repository.list_recent_finished_games(user_id=user_id)
         except Exception:  # noqa: BLE001
-            logger.exception("Wordle menu query failed")
+            logger.exception("Wordle menu query failed user_id=%s", user_id)
             _raise_service_error(status_code=500, message="Failed to load Wordle menu")
 
         active_game = (
@@ -124,10 +124,10 @@ class WordleService:
             previous_games=previous_games,
         )
 
-    async def start_game(self, request: StartWordleRequest) -> StartWordleResponse:
+    async def start_game(self, user_id: str, request: StartWordleRequest) -> StartWordleResponse:
         try:
             if not request.force_new:
-                in_progress = await wordle_repository.get_latest_in_progress()
+                in_progress = await wordle_repository.get_latest_in_progress(user_id=user_id)
                 if in_progress is not None:
                     return StartWordleResponse(
                         resumed_existing=True,
@@ -136,13 +136,18 @@ class WordleService:
 
             target_word = choose_target_word(request.difficulty)
             game_document = await wordle_repository.create_game(
+                user_id=user_id,
                 difficulty=request.difficulty,
                 target_word=target_word,
                 max_attempts=MAX_ATTEMPTS,
                 word_length=WORD_LENGTH,
             )
         except Exception:  # noqa: BLE001
-            logger.exception("Wordle start failed difficulty=%s", request.difficulty.value)
+            logger.exception(
+                "Wordle start failed user_id=%s difficulty=%s",
+                user_id,
+                request.difficulty.value,
+            )
             _raise_service_error(status_code=500, message="Failed to start Wordle game")
 
         return StartWordleResponse(
@@ -150,9 +155,9 @@ class WordleService:
             game=_to_game_state(game_document, include_answer=False),
         )
 
-    async def submit_guess(self, request: GuessWordleRequest) -> GuessWordleResponse:
+    async def submit_guess(self, user_id: str, request: GuessWordleRequest) -> GuessWordleResponse:
         try:
-            game_document = await wordle_repository.get_game(request.game_id)
+            game_document = await wordle_repository.get_game(request.game_id, user_id=user_id)
             if game_document is None:
                 _raise_service_error(
                     status_code=404,
@@ -219,7 +224,8 @@ class WordleService:
             raise
         except Exception:  # noqa: BLE001
             logger.exception(
-                "Wordle guess processing failed game_id=%s guess=%s",
+                "Wordle guess processing failed user_id=%s game_id=%s guess=%s",
+                user_id,
                 request.game_id,
                 request.guess,
             )
