@@ -116,6 +116,7 @@ export default function WordlePage() {
   const [currentGuess, setCurrentGuess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState("Choose a difficulty and hit Play.");
+  const [wordBankNotice, setWordBankNotice] = useState<string | null>(null);
   const [shakeTick, setShakeTick] = useState(0);
   const [keyPulse, setKeyPulse] = useState("");
 
@@ -133,6 +134,7 @@ export default function WordlePage() {
         setPreviousGames(menu.previousGames);
         setAvailableDifficulties(menu.availableDifficulties);
         setDifficulty(menu.activeGame?.difficulty ?? menu.availableDifficulties[0] ?? "common");
+        setWordBankNotice(menu.wordBankNotice ?? menu.activeGame?.wordBankNotice ?? null);
 
         if (menu.activeGame) {
           setNotice("Resumed your latest active game.");
@@ -171,6 +173,7 @@ export default function WordlePage() {
     try {
       const menu = await fetchWordleMenu();
       setPreviousGames(menu.previousGames);
+      setWordBankNotice(menu.wordBankNotice ?? menu.activeGame?.wordBankNotice ?? null);
       if (menu.activeGame) {
         setCurrentGame(menu.activeGame);
       }
@@ -187,6 +190,7 @@ export default function WordlePage() {
     try {
       const started = await startWordleGame(difficulty, forceNew);
       setCurrentGame(started.game);
+      setWordBankNotice(started.game.wordBankNotice ?? null);
       setCurrentGuess("");
       setNotice(started.resumedExisting ? "Resumed existing game." : "New game started.");
       await refreshHistory();
@@ -218,6 +222,7 @@ export default function WordlePage() {
     try {
       const response = await submitWordleGuess(currentGame.gameId, currentGuess.toLowerCase());
       setCurrentGame(response.game);
+      setWordBankNotice(response.game.wordBankNotice ?? null);
 
       if (!response.accepted) {
         if (response.message.toLowerCase().includes("word not found")) {
@@ -362,6 +367,11 @@ export default function WordlePage() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-300">Wordle Lab</p>
           <h1 className="mt-2 text-4xl font-black tracking-tight text-zinc-100">Word Duel</h1>
           <p className="mt-2 text-sm text-zinc-400">Sharper logic, cleaner animations, same five-letter adrenaline.</p>
+          {wordBankNotice ? (
+            <p className="mt-3 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              {wordBankNotice}
+            </p>
+          ) : null}
         </div>
         <Link href="/games" className="rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
           Back to games
@@ -500,7 +510,7 @@ export default function WordlePage() {
 
         <aside className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5 md:p-6">
           <h2 className="text-xl font-bold text-zinc-100">Previous Games</h2>
-          <p className="mt-1 text-sm text-zinc-400">All sessions for now, no accounts yet.</p>
+          <p className="mt-1 text-sm text-zinc-400">Recent finished games for this player profile.</p>
 
           <div className="mt-4 space-y-3">
             {isLoading ? (

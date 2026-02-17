@@ -1,21 +1,11 @@
 from __future__ import annotations
 
-from collections import defaultdict
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 from app.core.database import mongo_manager
 from app.schemas.leaderboard import GameLeaderboardResponse, LeaderboardEntry
-
-
-@dataclass
-class _WordleAggregate:
-    user_id: str
-    games_played: int = 0
-    wins: int = 0
-    losses: int = 0
-    total_attempts_on_wins: int = 0
 
 
 class _LeaderboardCandidate(TypedDict):
@@ -44,58 +34,96 @@ class LeaderboardService:
         if mongo_manager.db is None:
             raise LeaderboardServiceError(status_code=500, message="Database unavailable")
 
-        wordle_games = await mongo_manager.db["wordle_games"].find({}).to_list(length=5000)
-        users = await mongo_manager.db["users"].find({}, {"_id": 0, "user_id": 1, "username": 1}).to_list(
+        pipeline: list[dict[str, Any]] = [
+            {
+                "$match": {
+                    "user_id": {"$type": "string", "$ne": ""},
+                },
+            },
+            {
+                "$group": {
+                    "_id": "$user_id",
+                    "games_played": {"$sum": 1},
+                    "wins": {"$sum": {"$cond": [{"$eq": ["$status", "won"]}, 1, 0]}},
+                    "losses": {"$sum": {"$cond": [{"$eq": ["$status", "lost"]}, 1, 0]}},
+                    "total_attempts_on_wins": {
+                        "$sum": {
+                            "$cond": [
+                                {"$eq": ["$status", "won"]},
+                                {"$ifNull": ["$attempts_used", 0]},
+                                0,
+                            ],
+                        },
+                    },
+                },
+            },
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "_id",
+                    "foreignField": "user_id",
+                    "as": "user",
+                },
+            },
+            {
+                "$unwind": {
+                    "path": "$user",
+                    "preserveNullAndEmptyArrays": True,
+                },
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "user_id": "$_id",
+                    "username": {"$ifNull": ["$user.username", "unknown"]},
+                    "games_played": 1,
+                    "wins": 1,
+                    "losses": 1,
+                    "total_attempts_on_wins": 1,
+                },
+            },
+        ]
+
+        typed_pipeline = cast(Sequence[Mapping[str, Any]], pipeline)
+        aggregate_rows = await mongo_manager.db["wordle_games"].aggregate(typed_pipeline).to_list(
             length=5000,
         )
 
-        user_name_map = {str(item["user_id"]): str(item.get("username") or "unknown") for item in users}
-
-        aggregates: dict[str, _WordleAggregate] = defaultdict(lambda: _WordleAggregate(user_id=""))
-        for game in wordle_games:
-            user_id_value = game.get("user_id")
-            if not isinstance(user_id_value, str) or not user_id_value:
-                continue
-
-            aggregate = aggregates[user_id_value]
-            if not aggregate.user_id:
-                aggregate.user_id = user_id_value
-
-            aggregate.games_played += 1
-            status = str(game.get("status") or "")
-            attempts_used = int(game.get("attempts_used") or 0)
-            if status == "won":
-                aggregate.wins += 1
-                aggregate.total_attempts_on_wins += attempts_used
-            elif status == "lost":
-                aggregate.losses += 1
-
         candidates: list[_LeaderboardCandidate] = []
-        for user_id, aggregate in aggregates.items():
-            if aggregate.games_played == 0:
+        for row in aggregate_rows:
+            games_played = int(row.get("games_played") or 0)
+            if games_played == 0:
                 continue
 
-            win_rate = aggregate.wins / aggregate.games_played
+            user_id = str(row.get("user_id") or "")
+            if not user_id:
+                continue
+
+            wins = int(row.get("wins") or 0)
+            losses = int(row.get("losses") or 0)
+            total_attempts_on_wins = int(row.get("total_attempts_on_wins") or 0)
+
+            win_rate = wins / games_played
             average_attempts = (
-                aggregate.total_attempts_on_wins / aggregate.wins
-                if aggregate.wins > 0
+                total_attempts_on_wins / wins
+                if wins > 0
                 else 0.0
             )
 
             elo_score = self._calculate_elo_score(
-                games_played=aggregate.games_played,
-                wins=aggregate.wins,
-                losses=aggregate.losses,
+                games_played=games_played,
+                wins=wins,
+                losses=losses,
                 average_attempts=average_attempts,
             )
 
             candidates.append(
                 {
                     "user_id": user_id,
-                    "username": user_name_map.get(user_id, "unknown"),
-                    "games_played": aggregate.games_played,
-                    "wins": aggregate.wins,
-                    "losses": aggregate.losses,
+                    "username": str(row.get("username") or "unknown"),
+                    "games_played": games_played,
+                    "wins": wins,
+                    "losses": losses,
                     "win_rate": round(win_rate, 4),
                     "average_attempts": round(average_attempts, 2),
                     "elo_score": elo_score,

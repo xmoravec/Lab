@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import Field
 
@@ -47,12 +48,17 @@ class WordleGameState(CamelModel):
     started_at: datetime
     completed_at: datetime | None = None
     answer: str | None = None
+    word_bank_source: Literal["wordfreq", "fallback"] = "wordfreq"
+    limited_word_bank: bool = False
+    word_bank_notice: str | None = None
 
 
 class WordleMenuResponse(CamelModel):
     available_difficulties: list[WordleDifficulty]
     active_game: WordleGameState | None = None
     previous_games: list[WordleGameState]
+    limited_word_bank: bool = False
+    word_bank_notice: str | None = None
 
 
 class StartWordleRequest(CamelModel):

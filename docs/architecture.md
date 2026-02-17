@@ -107,16 +107,16 @@ This gives a deterministic “ready” signal and a reusable function for future
 
 - Backend Wordle implementation is encapsulated under `backend/app/games/wordle/`.
 - Main responsibilities are split into:
-  - `word_bank.py` for frequency-based candidate pools and difficulty selection
-  - `evaluator.py` for Wordle letter-state evaluation logic
+  - `service.py` for gameplay orchestration, word-bank sourcing/validation, and tile evaluation logic
   - `repository.py` for MongoDB persistence
-  - `service.py` for gameplay orchestration and validation
 - Mongo collection `wordle_games` stores all rounds, guesses, and outcomes.
 - Each game document is scoped to a `user_id`; menu/history/start/guess are fully personalized.
 - Guest play is supported through internal guest identities; guest sessions are stored in-memory only (no Mongo persistence) and are intended for single browser-visit continuity.
 - Supports two difficulties:
   - `common`: top ~2k five-letter words
   - `extended`: top ~8k five-letter words
+- Primary dictionary source is `wordfreq` (`top_n_list`) via direct top-level import.
+- If dictionary sourcing fails, the backend uses a vetted fallback list and surfaces explicit limited-mode metadata (`limitedWordBank`, `wordBankNotice`) to frontend menu and gameplay responses.
 
 ### Leaderboards module
 

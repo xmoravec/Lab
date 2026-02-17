@@ -8,7 +8,7 @@ It is built as a Docker-first monorepo with:
 - FastAPI backend (`backend/`)
 - MongoDB database (`mongo` container)
 
-Current status: a runnable local baseline is implemented with secure account authentication (NextAuth + backend credential verification), personalized Mongo-backed Wordle history for authenticated users, guest Wordle gameplay with in-visit continuity only (non-persistent), global Wordle ELO leaderboards, typed API contracts, fail-fast Mongo startup checks, and refreshed Home/Games UX that features gameplay, rankings, and account onboarding.
+Current status: a runnable local baseline is implemented with secure account authentication (NextAuth + backend credential verification), personalized Mongo-backed Wordle history for authenticated users, guest Wordle gameplay with in-visit continuity only (non-persistent), global Wordle ELO leaderboards, typed API contracts, fail-fast Mongo startup checks, explicit Wordle dictionary-source signaling with limited-mode fallback notices, and refreshed Home/Games UX that features gameplay, rankings, and account onboarding.
 
 ## Quick start
 

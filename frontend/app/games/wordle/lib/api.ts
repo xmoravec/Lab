@@ -26,12 +26,17 @@ export type WordleGameState = {
   startedAt: string;
   completedAt?: string | null;
   answer?: string | null;
+  wordBankSource: "wordfreq" | "fallback";
+  limitedWordBank: boolean;
+  wordBankNotice?: string | null;
 };
 
 export type WordleMenuResponse = {
   availableDifficulties: WordleDifficulty[];
   activeGame?: WordleGameState | null;
   previousGames: WordleGameState[];
+  limitedWordBank: boolean;
+  wordBankNotice?: string | null;
 };
 
 export type StartWordleResponse = {
