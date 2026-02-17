@@ -17,6 +17,15 @@ DEFAULT_WORDLE_GAME: dict[str, str | int] = {
     "estimated_session_minutes": 5,
 }
 
+DEFAULT_CHESS_GAME: dict[str, str | int] = {
+    "slug": "chess",
+    "name": "Chess",
+    "summary": "Play traditional chess with account invitations, self-play, and a configurable built-in bot.",
+    "status": "playable",
+    "accent": "from-amber-500 to-orange-500",
+    "estimated_session_minutes": 20,
+}
+
 
 def _require_games_collection() -> AsyncIOMotorCollection[dict[str, Any]]:
     if mongo_manager.db is None:
@@ -27,20 +36,28 @@ def _require_games_collection() -> AsyncIOMotorCollection[dict[str, Any]]:
 
 async def _ensure_seed_data() -> None:
     collection = _require_games_collection()
-    existing_wordle = await collection.find_one({"slug": DEFAULT_WORDLE_GAME["slug"]})
-    if existing_wordle is None:
-        await collection.insert_one(DEFAULT_WORDLE_GAME)
-        return
+    await collection.create_index("slug", unique=True, name="games_slug_unique")
 
-    await collection.update_one(
-        {"slug": DEFAULT_WORDLE_GAME["slug"]},
-        {"$set": DEFAULT_WORDLE_GAME},
-    )
+    defaults = [DEFAULT_WORDLE_GAME, DEFAULT_CHESS_GAME]
+    for game_defaults in defaults:
+        existing_game = await collection.find_one({"slug": game_defaults["slug"]}, {"_id": 0})
+        if existing_game is None:
+            await collection.insert_one(game_defaults)
+            continue
+
+        if existing_game != game_defaults:
+            await collection.update_one(
+                {"slug": game_defaults["slug"]},
+                {"$set": game_defaults},
+            )
+
+
+async def ensure_catalog_seed_data() -> None:
+    await _ensure_seed_data()
 
 
 async def _get_game_cards() -> list[GameCard]:
     collection = _require_games_collection()
-    await _ensure_seed_data()
     game_documents = await collection.find({}, {"_id": 0}).to_list(length=100)
     return [GameCard.model_validate(document) for document in game_documents]
 

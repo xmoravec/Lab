@@ -52,6 +52,10 @@ class WordleRepository:
             "attempts_used": 0,
             "word_length": word_length,
             "attempts": [],
+            "hint_used": False,
+            "hint_letter_index": None,
+            "hint_letter": None,
+            "admin_answer_revealed": False,
             "started_at": now,
             "completed_at": None,
         }
@@ -67,6 +71,14 @@ class WordleRepository:
             return self._guest_bucket(user_id).get(game_id)
 
         return await self._collection().find_one({"game_id": game_id, "user_id": user_id})
+
+    async def get_game_for_admin(self, game_id: str) -> dict[str, Any] | None:
+        for guest_bucket in self._guest_games_by_user.values():
+            guest_game = guest_bucket.get(game_id)
+            if guest_game is not None:
+                return guest_game
+
+        return await self._collection().find_one({"game_id": game_id})
 
     async def save_game(self, game_document: dict[str, Any]) -> None:
         user_id = str(game_document["user_id"])

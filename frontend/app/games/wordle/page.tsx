@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   fetchWordleMenu,
+  requestWordleHint,
+  revealWordleAnswer,
   startWordleGame,
   submitWordleGuess,
   type TileState,
@@ -18,6 +20,8 @@ import styles from "./wordle.module.css";
 const KEYBOARD_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
 
 type KeyboardLegend = Record<string, TileState>;
+type BoardWidthMode = "classic" | "auto";
+type WordleViewMode = "menu" | "game";
 
 const STATE_PRIORITY: Record<TileState, number> = {
   absent: 0,
@@ -115,9 +119,61 @@ export default function WordlePage() {
   const [previousGames, setPreviousGames] = useState<WordleGameState[]>([]);
   const [currentGuess, setCurrentGuess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isHinting, setIsHinting] = useState(false);
+  const [isRevealing, setIsRevealing] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminModeEnabled, setAdminModeEnabled] = useState(false);
+  const [boardWidthMode, setBoardWidthMode] = useState<BoardWidthMode>("classic");
+  const [viewMode, setViewMode] = useState<WordleViewMode>("menu");
   const [notice, setNotice] = useState("Choose a difficulty and hit Play.");
+  const [wordBankNotice, setWordBankNotice] = useState<string | null>(null);
   const [shakeTick, setShakeTick] = useState(0);
   const [keyPulse, setKeyPulse] = useState("");
+
+  useEffect(() => {
+    let disposed = false;
+
+    async function syncAdminModeState() {
+      try {
+        const response = await fetch("/api/auth/admin-mode", { cache: "no-store" });
+        if (!response.ok || disposed) {
+          return;
+        }
+
+        const payload = (await response.json()) as { isAdmin?: boolean; adminModeEnabled?: boolean };
+        if (disposed) {
+          return;
+        }
+
+        const nextIsAdmin = Boolean(payload.isAdmin);
+        const nextAdminModeEnabled = nextIsAdmin && Boolean(payload.adminModeEnabled);
+
+        setIsAdmin(nextIsAdmin);
+        setAdminModeEnabled(nextAdminModeEnabled);
+      } catch {
+        if (!disposed) {
+          setIsAdmin(false);
+          setAdminModeEnabled(false);
+        }
+      }
+    }
+
+    function handleFocus() {
+      void syncAdminModeState();
+    }
+
+    void syncAdminModeState();
+    const intervalHandle = window.setInterval(() => {
+      void syncAdminModeState();
+    }, 3000);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(intervalHandle);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -133,9 +189,10 @@ export default function WordlePage() {
         setPreviousGames(menu.previousGames);
         setAvailableDifficulties(menu.availableDifficulties);
         setDifficulty(menu.activeGame?.difficulty ?? menu.availableDifficulties[0] ?? "common");
+        setWordBankNotice(menu.wordBankNotice ?? menu.activeGame?.wordBankNotice ?? null);
 
         if (menu.activeGame) {
-          setNotice("Resumed your latest active game.");
+          setNotice("Active game found. Use Resume to continue or start a new game.");
         } else {
           setNotice("Choose a difficulty and hit Play.");
         }
@@ -166,11 +223,13 @@ export default function WordlePage() {
   const activeRowIndex = currentGame?.attemptsUsed ?? 0;
   const maxAttempts = currentGame?.maxAttempts ?? 6;
   const wordLength = currentGame?.wordLength ?? 5;
+  const boardColumns = boardWidthMode === "auto" ? wordLength : 5;
 
   const refreshHistory = useCallback(async () => {
     try {
       const menu = await fetchWordleMenu();
       setPreviousGames(menu.previousGames);
+      setWordBankNotice(menu.wordBankNotice ?? menu.activeGame?.wordBankNotice ?? null);
       if (menu.activeGame) {
         setCurrentGame(menu.activeGame);
       }
@@ -187,6 +246,8 @@ export default function WordlePage() {
     try {
       const started = await startWordleGame(difficulty, forceNew);
       setCurrentGame(started.game);
+      setViewMode("game");
+      setWordBankNotice(started.game.wordBankNotice ?? null);
       setCurrentGuess("");
       setNotice(started.resumedExisting ? "Resumed existing game." : "New game started.");
       await refreshHistory();
@@ -204,7 +265,7 @@ export default function WordlePage() {
   }
 
   const submitGuess = useCallback(async () => {
-    if (!currentGame || currentGame.status !== "in-progress" || isSubmitting) {
+    if (viewMode !== "game" || !currentGame || currentGame.status !== "in-progress" || isSubmitting) {
       return;
     }
 
@@ -218,6 +279,7 @@ export default function WordlePage() {
     try {
       const response = await submitWordleGuess(currentGame.gameId, currentGuess.toLowerCase());
       setCurrentGame(response.game);
+      setWordBankNotice(response.game.wordBankNotice ?? null);
 
       if (!response.accepted) {
         if (response.message.toLowerCase().includes("word not found")) {
@@ -263,10 +325,10 @@ export default function WordlePage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [currentGame, currentGuess, isSubmitting, refreshHistory, wordLength]);
+  }, [currentGame, currentGuess, isSubmitting, refreshHistory, viewMode, wordLength]);
 
   const pushKey = useCallback((key: string) => {
-    if (!currentGame || currentGame.status !== "in-progress") {
+    if (viewMode !== "game" || !currentGame || currentGame.status !== "in-progress") {
       return;
     }
 
@@ -295,7 +357,47 @@ export default function WordlePage() {
     });
     setKeyPulse(normalized);
     setTimeout(() => setKeyPulse(""), 140);
-  }, [currentGame, submitGuess, wordLength]);
+  }, [currentGame, submitGuess, viewMode, wordLength]);
+
+  const handleHint = useCallback(async () => {
+    if (!currentGame || currentGame.status !== "in-progress" || isHinting) {
+      return;
+    }
+
+    setIsHinting(true);
+    try {
+      const response = await requestWordleHint(currentGame.gameId);
+      setCurrentGame(response.game);
+      setNotice(response.message);
+      setWordBankNotice(response.game.wordBankNotice ?? null);
+      await refreshHistory();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to request hint";
+      setNotice(message);
+    } finally {
+      setIsHinting(false);
+    }
+  }, [currentGame, isHinting, refreshHistory]);
+
+  const handleAdminReveal = useCallback(async () => {
+    if (!currentGame || !isAdmin || !adminModeEnabled || isRevealing) {
+      return;
+    }
+
+    setIsRevealing(true);
+    try {
+      const response = await revealWordleAnswer(currentGame.gameId);
+      setCurrentGame(response.game);
+      setNotice(response.message);
+      setWordBankNotice(response.game.wordBankNotice ?? null);
+      await refreshHistory();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to reveal answer";
+      setNotice(message);
+    } finally {
+      setIsRevealing(false);
+    }
+  }, [adminModeEnabled, currentGame, isAdmin, isRevealing, refreshHistory]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -362,6 +464,11 @@ export default function WordlePage() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-300">Wordle Lab</p>
           <h1 className="mt-2 text-4xl font-black tracking-tight text-zinc-100">Word Duel</h1>
           <p className="mt-2 text-sm text-zinc-400">Sharper logic, cleaner animations, same five-letter adrenaline.</p>
+          {wordBankNotice ? (
+            <p className="mt-3 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              {wordBankNotice}
+            </p>
+          ) : null}
         </div>
         <Link href="/games" className="rounded-md border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
           Back to games
@@ -370,12 +477,31 @@ export default function WordlePage() {
 
       <div className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <section className={`${styles.glow} rounded-3xl border border-zinc-800 bg-zinc-950/80 p-5 md:p-7`}>
-          {!currentGame ? (
+          {viewMode === "menu" || !currentGame ? (
             <div className="space-y-6">
               <div>
                 <h2 className="text-2xl font-bold text-zinc-100">Ready to play?</h2>
                 <p className="mt-2 text-zinc-400">Pick your difficulty, then smash the big button.</p>
               </div>
+
+              {currentGame ? (
+                <div className="rounded-2xl border border-cyan-500/35 bg-cyan-500/10 p-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-cyan-200">Active game</p>
+                  <p className="mt-1 text-sm text-cyan-100">
+                    {toReadableDifficulty(currentGame.difficulty)} · {gameStatusText(currentGame)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode("game");
+                      setNotice("Resumed your active game.");
+                    }}
+                    className="mt-3 rounded-xl border border-cyan-400/50 bg-cyan-500/15 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/25"
+                  >
+                    Resume active game
+                  </button>
+                </div>
+              ) : null}
 
               <div className="grid gap-3 sm:grid-cols-2">
                 {availableDifficulties.map((option) => (
@@ -393,6 +519,35 @@ export default function WordlePage() {
                     <p className="mt-1 text-sm">{toReadableDifficulty(option)}</p>
                   </button>
                 ))}
+              </div>
+
+              <div className="rounded-xl border border-zinc-800/90 bg-zinc-900/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Board width</p>
+                <p className="mt-1 text-xs text-zinc-500">Classic 5-letter mode is primary. Auto mode follows game word length.</p>
+                <div className="mt-2 inline-flex rounded-lg border border-zinc-700 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setBoardWidthMode("classic")}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                      boardWidthMode === "classic"
+                        ? "bg-zinc-700 text-zinc-100"
+                        : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    }`}
+                  >
+                    Classic (5)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBoardWidthMode("auto")}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                      boardWidthMode === "auto"
+                        ? "bg-zinc-700 text-zinc-100"
+                        : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    }`}
+                  >
+                    Auto
+                  </button>
+                </div>
               </div>
 
               <button
@@ -414,6 +569,33 @@ export default function WordlePage() {
                 <div className="flex gap-2">
                   <button
                     type="button"
+                    onClick={() => {
+                      setViewMode("menu");
+                    }}
+                    className="rounded-md border border-zinc-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-300 hover:bg-zinc-800"
+                  >
+                    Menu
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleHint()}
+                    disabled={isHinting || currentGame.hintUsed || currentGame.status !== "in-progress"}
+                    className="rounded-md border border-amber-500/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-200 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isHinting ? "Hint..." : currentGame.hintUsed ? "Hint used" : "Use hint"}
+                  </button>
+                  {isAdmin && adminModeEnabled ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleAdminReveal()}
+                      disabled={isRevealing || currentGame.status !== "in-progress"}
+                      className="rounded-md border border-rose-500/60 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-rose-200 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isRevealing ? "Reveal..." : "Admin reveal"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
                     onClick={() => void handleStart(true)}
                     className="rounded-md border border-zinc-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-300 hover:bg-zinc-800"
                   >
@@ -422,6 +604,19 @@ export default function WordlePage() {
                 </div>
               </div>
 
+              {currentGame.hintUsed && currentGame.hintLetter && typeof currentGame.hintLetterIndex === "number" ? (
+                <p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  Hint used: letter {currentGame.hintLetterIndex + 1} is {currentGame.hintLetter.toUpperCase()}.
+                  This game awards no ELO.
+                </p>
+              ) : null}
+
+              {isAdmin && adminModeEnabled && currentGame.adminAnswerRevealed && currentGame.answer ? (
+                <p className="mb-4 rounded-md border border-rose-500/50 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">
+                  Admin reveal active: answer is <span className="font-black tracking-widest">{currentGame.answer.toUpperCase()}</span>
+                </p>
+              ) : null}
+
               <div className="mx-auto max-w-md space-y-2">
                 {boardRows.map((row, rowIndex) => {
                   const shouldShake = rowIndex === activeRowIndex && currentGame.status === "in-progress";
@@ -429,7 +624,8 @@ export default function WordlePage() {
                   return (
                     <div
                       key={`${rowIndex}-${shakeTick}`}
-                      className={`grid grid-cols-5 gap-2 ${shouldShake ? styles.rowShake : ""}`}
+                      style={{ gridTemplateColumns: `repeat(${boardColumns}, minmax(0, 1fr))` }}
+                      className={`grid gap-2 ${shouldShake ? styles.rowShake : ""}`}
                     >
                       {row.letters.map((letter, letterIndex) => {
                         const state = row.states[letterIndex];
@@ -500,7 +696,7 @@ export default function WordlePage() {
 
         <aside className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5 md:p-6">
           <h2 className="text-xl font-bold text-zinc-100">Previous Games</h2>
-          <p className="mt-1 text-sm text-zinc-400">All sessions for now, no accounts yet.</p>
+          <p className="mt-1 text-sm text-zinc-400">Recent finished games for this player profile.</p>
 
           <div className="mt-4 space-y-3">
             {isLoading ? (

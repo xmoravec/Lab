@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Black king">
+  <defs>
+    <linearGradient id="bk" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#4b5563"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+  </defs>
+  <path d="M44 10h12v8h8v8h-8v12h14l-8 16v20H38V54l-8-16h14V26h-8v-8h8z" fill="url(#bk)" stroke="#e5e7eb" stroke-width="4" stroke-linejoin="round"/>
+  <rect x="30" y="78" width="40" height="10" rx="4" fill="#1f2937" stroke="#e5e7eb" stroke-width="4"/>
+</svg>

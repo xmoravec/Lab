@@ -53,6 +53,7 @@ class AuthService:
             display_name=document["display_name"],
             avatar_url=document.get("avatar_url"),
             created_at=document["created_at"],
+            is_admin=bool(document.get("is_admin", False)),
         )
 
     async def _ensure_unique_username(self, base_username: str) -> str:
@@ -86,6 +87,7 @@ class AuthService:
             "providerAccounts": {},
             "created_at": now,
             "updated_at": now,
+            "is_admin": False,
         }
 
         try:
@@ -172,6 +174,7 @@ class AuthService:
             "providerAccounts": {"google": provider_account_id},
             "created_at": now,
             "updated_at": now,
+            "is_admin": False,
         }
 
         try:
@@ -187,6 +190,13 @@ class AuthService:
         if document is None:
             return None
         return self._to_auth_user(document)
+
+    async def is_user_admin(self, user_id: str) -> bool:
+        await self._ensure_indexes()
+        document = await self._collection().find_one({"user_id": user_id, "is_admin": True})
+        if document is None:
+            return False
+        return bool(document.get("is_admin", False))
 
 
 auth_service = AuthService()

@@ -1,11 +1,8 @@
+import { parseApiError } from "@/lib/api-error";
+
 function resolvePublicApiBaseUrl(): string {
   return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 }
-
-type ApiErrorBody = {
-  detail?: string;
-  message?: string;
-};
 
 export class ApiRequestError extends Error {
   status: number;
@@ -69,28 +66,15 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
   }
 
   if (!response.ok) {
-    let message = `Request failed: ${response.status}`;
     let responseBody: string | undefined;
 
     try {
       responseBody = await response.text();
-      if (responseBody) {
-        try {
-          const errorPayload = JSON.parse(responseBody) as ApiErrorBody;
-          if (errorPayload.detail) {
-            message = errorPayload.detail;
-          } else if (errorPayload.message) {
-            message = errorPayload.message;
-          } else {
-            message = `${message} - ${responseBody}`;
-          }
-        } catch {
-          message = `${message} - ${responseBody}`;
-        }
-      }
     } catch {
       // Keep default message when response body cannot be read.
     }
+
+    const message = parseApiError(response.status, responseBody);
 
     const apiError = new ApiRequestError({
       message,

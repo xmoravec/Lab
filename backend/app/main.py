@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.database import mongo_manager
+from app.games.chess.service import chess_service
+from app.services.catalog_service import ensure_catalog_seed_data
 from app.services.status_reporter import report_status
 
 logger = logging.getLogger("uvicorn.error")
@@ -19,6 +21,8 @@ logger = logging.getLogger("uvicorn.error")
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await mongo_manager.connect()
+    await chess_service.ensure_indexes()
+    await ensure_catalog_seed_data()
     await report_status()
     try:
         yield

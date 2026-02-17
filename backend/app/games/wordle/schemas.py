@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import Field
 
@@ -23,6 +24,7 @@ class TileState(str, Enum):
     ABSENT = "absent"
     PRESENT = "present"
     CORRECT = "correct"
+
 
 
 class GuessEvaluation(CamelModel):
@@ -47,12 +49,21 @@ class WordleGameState(CamelModel):
     started_at: datetime
     completed_at: datetime | None = None
     answer: str | None = None
+    hint_used: bool = False
+    hint_letter_index: int | None = Field(default=None, ge=0)
+    hint_letter: str | None = Field(default=None, min_length=1, max_length=1)
+    admin_answer_revealed: bool = False
+    word_bank_source: Literal["wordfreq", "fallback"] = "wordfreq"
+    limited_word_bank: bool = False
+    word_bank_notice: str | None = None
 
 
 class WordleMenuResponse(CamelModel):
     available_difficulties: list[WordleDifficulty]
     active_game: WordleGameState | None = None
     previous_games: list[WordleGameState]
+    limited_word_bank: bool = False
+    word_bank_notice: str | None = None
 
 
 class StartWordleRequest(CamelModel):
@@ -71,6 +82,26 @@ class GuessWordleRequest(CamelModel):
 
 
 class GuessWordleResponse(CamelModel):
+    game: WordleGameState
+    accepted: bool
+    message: str
+
+
+class WordleHintRequest(CamelModel):
+    game_id: str = Field(min_length=1)
+
+
+class WordleHintResponse(CamelModel):
+    game: WordleGameState
+    accepted: bool
+    message: str
+
+
+class WordleRevealAnswerRequest(CamelModel):
+    game_id: str = Field(min_length=1)
+
+
+class WordleRevealAnswerResponse(CamelModel):
     game: WordleGameState
     accepted: bool
     message: str
