@@ -43,24 +43,22 @@ export function SpotlightVerticalSlideshow({ slides }: SpotlightVerticalSlidesho
     );
   }
 
+  const activeSlide = slides[activeIndex] ?? slides[0];
+  const activeSlideIsFirst = activeIndex === 0;
+
   return (
     <article className="rounded-3xl border border-zinc-800 bg-zinc-900/90 p-4 md:p-5">
       <div className="relative overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950/80">
-        <div
-          className="flex transition-transform duration-500 ease-out"
-          style={{ transform: `translateX(-${activeIndex * 100}%)` }}
-        >
-          {slides.map((slide) => (
-            <div key={slide.id} className="relative aspect-16/10 w-full shrink-0">
-              <Image
-                src={slide.screenshotPath}
-                alt={`${slide.title} screenshot`}
-                fill
-                sizes="(min-width: 768px) 900px, 100vw"
-                className="object-contain p-4 md:p-5"
-              />
-            </div>
-          ))}
+        <div key={activeSlide.id} className="relative aspect-16/10 w-full">
+          <Image
+            src={activeSlide.screenshotPath}
+            alt={`${activeSlide.title} screenshot`}
+            fill
+            sizes="(min-width: 768px) 900px, 100vw"
+            priority={activeSlideIsFirst}
+            fetchPriority={activeSlideIsFirst ? "high" : "auto"}
+            className="object-contain p-4 md:p-5"
+          />
         </div>
       </div>
 

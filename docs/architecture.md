@@ -188,6 +188,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Shared frontend auth contract types are centralized in `frontend/lib/contracts/auth.ts` to reduce duplicated account payload definitions across auth/session and account onboarding flows.
 - Home page features a hero, spotlight game, and scalable experiment sections using backend-sourced content.
 - Home page spotlight is presented as a horizontal carousel that rotates through available playable games and live tools with screenshot-led cards.
+- Above-the-fold screenshot assets on Home/Games/Tools use Next Image high-priority loading for first-visible cards/slides, and spotlight now renders only the active slide image to reduce initial image work and improve LCP.
 - A global footer is rendered from root layout across the app, with prominent author attribution (`xmoravec`), personal website reference (`www.xmoravec.com`), and planned deployment domain (`lab.xmoravec.com`).
 - Footer includes a persistent Privacy Policy link.
 - Games page provides a richer catalog view with playable-first grouping and summary stats.

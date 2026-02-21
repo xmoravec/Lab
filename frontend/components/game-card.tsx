@@ -7,6 +7,7 @@ type GameCardProps = {
   game: GameCardModel;
   compact?: boolean;
   featured?: boolean;
+  imagePriority?: boolean;
 };
 
 const GAME_SCREENSHOT_BY_SLUG: Record<string, string> = {
@@ -39,7 +40,7 @@ function statusLabel(status: string): string {
   return status;
 }
 
-export function GameCard({ game, compact = false, featured = false }: GameCardProps) {
+export function GameCard({ game, compact = false, featured = false, imagePriority = false }: GameCardProps) {
   const detailsHref =
     game.slug === "wordle"
       ? "/games/wordle"
@@ -78,6 +79,8 @@ export function GameCard({ game, compact = false, featured = false }: GameCardPr
               alt={`${game.name} screenshot`}
               fill
               sizes="(min-width: 768px) 480px, 100vw"
+              priority={imagePriority}
+              fetchPriority={imagePriority ? "high" : "auto"}
               className="object-cover transition duration-300 group-hover:scale-[1.02]"
             />
           </div>

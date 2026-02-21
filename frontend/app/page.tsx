@@ -8,9 +8,7 @@ import { SectionTitle } from "@/components/section-title";
 import { fetchHomeContent, fetchWordleLeaderboard } from "@/lib/content-api";
 
 export default async function HomePage() {
-  const session = await auth();
-  const home = await fetchHomeContent();
-  const leaderboard = await fetchWordleLeaderboard();
+  const [session, home, leaderboard] = await Promise.all([auth(), fetchHomeContent(), fetchWordleLeaderboard()]);
   const playableGames = home.featuredGames.filter((game) => game.status.toLowerCase() === "playable");
   const chessPlayable = playableGames.find((game) => game.slug === "chess") ?? null;
   const spotlightGame = chessPlayable ?? playableGames[0] ?? home.featuredGames[0] ?? null;
@@ -173,6 +171,8 @@ export default async function HomePage() {
                 alt="Wordle Solver screenshot"
                 fill
                 sizes="(min-width: 768px) 420px, 100vw"
+                priority
+                fetchPriority="high"
                 className="object-cover"
               />
             </div>
