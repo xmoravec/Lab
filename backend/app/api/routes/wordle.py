@@ -5,6 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.error_utils import raise_http_from_service_error, raise_internal_http_error
+from app.core.rate_limit import build_rate_limiter
 from app.core.security import PrincipalIdentity, require_internal_request, require_principal_identity
 from app.games.wordle.schemas import (
     GuessWordleRequest,
@@ -27,6 +28,11 @@ from app.services.auth_service import auth_service
 
 router = APIRouter(prefix="/games/wordle")
 logger = logging.getLogger("uvicorn.error")
+wordle_menu_rate_limit = build_rate_limiter(bucket="wordle-menu", limit=180, window_seconds=60)
+wordle_start_rate_limit = build_rate_limiter(bucket="wordle-start", limit=60, window_seconds=60)
+wordle_guess_rate_limit = build_rate_limiter(bucket="wordle-guess", limit=120, window_seconds=60)
+wordle_hint_rate_limit = build_rate_limiter(bucket="wordle-hint", limit=30, window_seconds=60)
+wordle_reveal_rate_limit = build_rate_limiter(bucket="wordle-reveal", limit=20, window_seconds=60)
 
 
 async def _wordle_identity_dependency(
@@ -52,7 +58,7 @@ async def _wordle_admin_identity_dependency(
     return identity
 
 
-@router.get("/menu", response_model=WordleMenuResponse)
+@router.get("/menu", response_model=WordleMenuResponse, dependencies=[Depends(wordle_menu_rate_limit)])
 async def get_wordle_menu(identity: PrincipalIdentity = Depends(_wordle_identity_dependency)) -> WordleMenuResponse:
     try:
         return await wordle_service.get_menu(user_id=identity.principal_id)
@@ -67,7 +73,7 @@ async def get_wordle_menu(identity: PrincipalIdentity = Depends(_wordle_identity
         )
 
 
-@router.post("/start", response_model=StartWordleResponse)
+@router.post("/start", response_model=StartWordleResponse, dependencies=[Depends(wordle_start_rate_limit)])
 async def start_wordle_game(
     payload: StartWordleRequest,
     identity: PrincipalIdentity = Depends(_wordle_identity_dependency),
@@ -86,7 +92,7 @@ async def start_wordle_game(
         )
 
 
-@router.post("/guess", response_model=GuessWordleResponse)
+@router.post("/guess", response_model=GuessWordleResponse, dependencies=[Depends(wordle_guess_rate_limit)])
 async def submit_wordle_guess(
     payload: GuessWordleRequest,
     identity: PrincipalIdentity = Depends(_wordle_identity_dependency),
@@ -105,7 +111,7 @@ async def submit_wordle_guess(
         )
 
 
-@router.post("/hint", response_model=WordleHintResponse)
+@router.post("/hint", response_model=WordleHintResponse, dependencies=[Depends(wordle_hint_rate_limit)])
 async def request_wordle_hint_endpoint(
     payload: WordleHintRequest,
     identity: PrincipalIdentity = Depends(_wordle_identity_dependency),
@@ -124,7 +130,11 @@ async def request_wordle_hint_endpoint(
         )
 
 
-@router.post("/reveal-answer", response_model=WordleRevealAnswerResponse)
+@router.post(
+    "/reveal-answer",
+    response_model=WordleRevealAnswerResponse,
+    dependencies=[Depends(wordle_reveal_rate_limit)],
+)
 async def reveal_wordle_answer_endpoint(
     payload: WordleRevealAnswerRequest,
     identity: PrincipalIdentity = Depends(_wordle_admin_identity_dependency),

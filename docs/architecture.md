@@ -98,6 +98,13 @@ Current implementation target is a stable local development baseline (phase 1).
 
 This gives a deterministic “ready” signal and a reusable function for future diagnostics.
 
+### Abuse controls and rate-limit telemetry
+
+- App-level rate limiting is enabled for sensitive/public endpoints (auth, gameplay mutations, tools, and system probes).
+- Rate-limit responses expose transparent headers (`x-rate-limit-*`, and `retry-after` on `429`) so clients can back off gracefully.
+- Rate-limit incidents are logged with privacy-safe identity hashing for operational visibility.
+- Internal observability endpoint `GET /api/rate-limit/stats` is available behind internal auth for quick incident review.
+
 ### Catalog data source
 
 - Catalog data is sourced from MongoDB collection `games`.
@@ -171,13 +178,18 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Home page features a hero, spotlight game, and scalable experiment sections using backend-sourced content.
 - Home page spotlight is presented as a horizontal carousel that rotates through available playable games and live tools with screenshot-led cards.
 - A global footer is rendered from root layout across the app, with prominent author attribution (`xmoravec`), personal website reference (`www.xmoravec.com`), and planned deployment domain (`lab.xmoravec.com`).
+- Footer includes a persistent Privacy Policy link.
 - Games page provides a richer catalog view with playable-first grouping and summary stats.
 - Shared game cards expose clickable game titles and a prominent playable CTA for fast entry into active games.
 - Game and tool catalog cards now use curated screenshots from `frontend/public/assets/screenshots/` (`chess.png`, `wordle.png`, `wordle_solver.png`) to improve visual presentation across Home, Games, and Tools pages.
 - Account pages (`/account/sign-in`, `/account/sign-up`) provide credentials onboarding and Google auth handoff.
+- Account sign-in/sign-up pages include direct privacy-policy acknowledgment links.
 - Leaderboards page (`/leaderboards`) features podium and full ranking table.
 - Tools index page (`/tools`) provides a catalog of utility experiences.
 - Wordle Solver tool UI is served at `/tools/wordle_solver` with multi-row green/yellow/gray clue inputs, ranked suggestions, and candidate previews.
+- Privacy Policy page is available at `/privacy` and documents account data, cookies, analytics, processors, retention, and user choices.
+- Cookie consent banner is shown from root layout and supports a low-friction choice between required-only cookies and optional analytics.
+- Vercel Analytics is client-gated by explicit consent and does not initialize before consent is accepted.
 - Dev Log page has been removed from the product navigation and route surface.
 - Wordle UI is encapsulated under `frontend/app/games/wordle/` and now consumes authenticated Next.js proxy routes.
 - Wordle gameplay now includes lightweight synthesized audio cues (Web Audio API) for keypress, submit, invalid input, hint, and win/loss outcomes, with a per-game menu toggle persisted in localStorage.
@@ -340,6 +352,7 @@ This stack keeps operational complexity low for a personal project while remaini
 - Vercel
   - Natural fit for App Router + NextAuth workflows.
   - Minimal ops burden for frontend deployments and environment management.
+  - Vercel Analytics is integrated in consent-gated mode (optional analytics only after opt-in).
 - Railway
   - Supports long-running containerized Python services and straightforward Docker deploys.
   - Good balance of simplicity and capability without self-managing a VM.

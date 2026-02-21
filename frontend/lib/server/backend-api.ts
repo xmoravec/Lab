@@ -4,6 +4,14 @@ import { cookies } from "next/headers";
 const backendBaseUrl = process.env.API_INTERNAL_BASE_URL ?? "http://backend:8000";
 const internalAuthSecret = process.env.BACKEND_INTERNAL_AUTH_SECRET ?? "lab-internal-dev-secret";
 const ADMIN_MODE_COOKIE_NAME = "lab_admin_mode";
+const BACKEND_PROXY_TIMEOUT_MS = 12_000;
+
+if (
+  process.env.NODE_ENV === "production" &&
+  internalAuthSecret === "lab-internal-dev-secret"
+) {
+  throw new Error("BACKEND_INTERNAL_AUTH_SECRET must be set to a non-default value in production");
+}
 
 type ProxyOptions = {
   method: "GET" | "POST";
@@ -11,6 +19,8 @@ type ProxyOptions = {
   body?: unknown;
   authMode?: "none" | "required" | "optional";
   guestId?: string;
+  forwardedFor?: string;
+  realIp?: string;
 };
 
 export async function proxyBackendJson(options: ProxyOptions): Promise<Response> {
@@ -31,6 +41,14 @@ export async function proxyBackendJson(options: ProxyOptions): Promise<Response>
     "Content-Type": "application/json",
   };
 
+  if (options.forwardedFor) {
+    headers["x-forwarded-for"] = options.forwardedFor;
+  }
+
+  if (options.realIp) {
+    headers["x-real-ip"] = options.realIp;
+  }
+
   if (authMode === "required" || authMode === "optional") {
     headers["x-internal-auth"] = internalAuthSecret;
 
@@ -46,12 +64,28 @@ export async function proxyBackendJson(options: ProxyOptions): Promise<Response>
     }
   }
 
-  const response = await fetch(`${backendBaseUrl}${options.path}`, {
-    method: options.method,
-    headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
-    cache: "no-store",
-  });
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => {
+    abortController.abort();
+  }, BACKEND_PROXY_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${backendBaseUrl}${options.path}`, {
+      method: options.method,
+      headers,
+      body: options.body ? JSON.stringify(options.body) : undefined,
+      cache: "no-store",
+      signal: abortController.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return Response.json({ detail: "Backend request timed out" }, { status: 504 });
+    }
+    return Response.json({ detail: "Failed to reach backend" }, { status: 502 });
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 
   const rawBody = await response.text();
   const contentType = response.headers.get("content-type") ?? "application/json";

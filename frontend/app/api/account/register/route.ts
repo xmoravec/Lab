@@ -11,6 +11,8 @@ export async function POST(request: Request): Promise<Response> {
     method: "POST",
     path: "/api/auth/register",
     authMode: "none",
+    forwardedFor: request.headers.get("x-forwarded-for") ?? undefined,
+    realIp: request.headers.get("x-real-ip") ?? undefined,
     body: payload,
   });
 }

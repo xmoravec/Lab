@@ -6,6 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from app.core.database import mongo_manager
@@ -39,10 +40,14 @@ class AuthService:
             return
 
         collection = self._collection()
+        await collection.create_index("user_id", unique=True, name="users_user_id_unique")
         await collection.create_index("email", unique=True, name="users_email_unique")
         await collection.create_index("username", unique=True, name="users_username_unique")
         await collection.create_index("providerAccounts.google", unique=True, sparse=True)
         self._indexes_ready = True
+
+    async def ensure_indexes(self) -> None:
+        await self._ensure_indexes()
 
     @staticmethod
     def _to_auth_user(document: dict[str, Any]) -> AuthUserResponse:
@@ -130,7 +135,7 @@ class AuthService:
 
         existing_by_provider = await collection.find_one({"providerAccounts.google": provider_account_id})
         if existing_by_provider is not None:
-            await collection.update_one(
+            refreshed = await collection.find_one_and_update(
                 {"_id": existing_by_provider["_id"]},
                 {
                     "$set": {
@@ -140,15 +145,15 @@ class AuthService:
                         "updated_at": now,
                     },
                 },
+                return_document=ReturnDocument.AFTER,
             )
-            refreshed = await collection.find_one({"_id": existing_by_provider["_id"]})
             if refreshed is None:
                 raise AuthServiceError(status_code=500, message="Failed to refresh google account")
             return self._to_auth_user(refreshed)
 
         existing_by_email = await collection.find_one({"email": normalized_email})
         if existing_by_email is not None:
-            await collection.update_one(
+            refreshed = await collection.find_one_and_update(
                 {"_id": existing_by_email["_id"]},
                 {
                     "$set": {
@@ -158,8 +163,8 @@ class AuthService:
                         "updated_at": now,
                     },
                 },
+                return_document=ReturnDocument.AFTER,
             )
-            refreshed = await collection.find_one({"_id": existing_by_email["_id"]})
             if refreshed is None:
                 raise AuthServiceError(status_code=500, message="Failed to refresh linked google account")
             return self._to_auth_user(refreshed)

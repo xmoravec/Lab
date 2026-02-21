@@ -155,12 +155,14 @@ class WordleService:
             for game_document in history_documents
         ]
 
+        word_bank_context = get_word_bank_context()
+
         return WordleMenuResponse(
             available_difficulties=[WordleDifficulty.COMMON, WordleDifficulty.EXTENDED],
             active_game=active_game,
             previous_games=previous_games,
-            limited_word_bank=get_word_bank_context()["limited_word_bank"],
-            word_bank_notice=get_word_bank_context()["notice"],
+            limited_word_bank=word_bank_context["limited_word_bank"],
+            word_bank_notice=word_bank_context["notice"],
         )
 
     async def start_game(self, user_id: str, request: StartWordleRequest) -> StartWordleResponse:

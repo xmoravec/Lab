@@ -4,12 +4,14 @@ import json
 from typing import Any
 
 from pydantic import field_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "Lab API"
     api_prefix: str = "/api"
+    app_env: str = "development"
 
     mongo_uri: str = "mongodb://mongo:27017/lab"
     mongo_db_name: str = "lab"
@@ -52,6 +54,17 @@ class Settings(BaseSettings):
                 pass
 
         return [origin.strip() for origin in raw_value.split(",") if origin.strip()]
+
+    @property
+    def is_production_like(self) -> bool:
+        normalized = self.app_env.strip().lower()
+        return normalized in {"production", "staging"}
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if self.is_production_like and self.internal_auth_secret == "lab-internal-dev-secret":
+            raise ValueError("INTERNAL_AUTH_SECRET must be set to a non-default value in production/staging")
+        return self
 
 
 settings = Settings()

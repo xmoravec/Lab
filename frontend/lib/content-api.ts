@@ -1,5 +1,11 @@
 import { requestJson } from "@/lib/http-client";
 
+type RevalidatedRequestInit = RequestInit & {
+  next?: {
+    revalidate?: number;
+  };
+};
+
 export type GameCard = {
   slug: string;
   name: string;
@@ -39,13 +45,25 @@ export type GameLeaderboardResponse = {
 };
 
 export async function fetchHomeContent(): Promise<HomeContentResponse> {
-  return requestJson<HomeContentResponse>("/api/home");
+  const init: RevalidatedRequestInit = {
+    cache: "force-cache",
+    next: { revalidate: 60 },
+  };
+  return requestJson<HomeContentResponse>("/api/home", init);
 }
 
 export async function fetchGamesCatalog(): Promise<GamesCatalogResponse> {
-  return requestJson<GamesCatalogResponse>("/api/games");
+  const init: RevalidatedRequestInit = {
+    cache: "force-cache",
+    next: { revalidate: 60 },
+  };
+  return requestJson<GamesCatalogResponse>("/api/games", init);
 }
 
 export async function fetchWordleLeaderboard(): Promise<GameLeaderboardResponse> {
-  return requestJson<GameLeaderboardResponse>("/api/leaderboards/wordle");
+  const init: RevalidatedRequestInit = {
+    cache: "force-cache",
+    next: { revalidate: 15 },
+  };
+  return requestJson<GameLeaderboardResponse>("/api/leaderboards/wordle", init);
 }

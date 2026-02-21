@@ -53,7 +53,7 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
         "Content-Type": "application/json",
         ...(init?.headers ?? {}),
       },
-      cache: "no-store",
+      cache: init?.cache ?? "no-store",
     });
   } catch (error) {
     console.error("API network request failed", {

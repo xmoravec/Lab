@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { AnalyticsGate } from "@/components/analytics-gate";
+import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 
@@ -20,6 +22,8 @@ export default function RootLayout({
         <SiteHeader />
         <div className="flex-1">{children}</div>
         <SiteFooter />
+        <CookieConsentBanner />
+        <AnalyticsGate />
       </body>
     </html>
   );

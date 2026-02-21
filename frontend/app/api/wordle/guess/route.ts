@@ -10,6 +10,8 @@ export async function POST(request: Request): Promise<Response> {
     path: "/api/games/wordle/guess",
     authMode: "optional",
     guestId,
+    forwardedFor: request.headers.get("x-forwarded-for") ?? undefined,
+    realIp: request.headers.get("x-real-ip") ?? undefined,
     body: {
       gameId: payload.gameId,
       guess: payload.guess,

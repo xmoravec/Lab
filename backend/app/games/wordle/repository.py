@@ -15,6 +15,7 @@ COLLECTION_NAME = "wordle_games"
 class WordleRepository:
     def __init__(self) -> None:
         self._guest_games_by_user: dict[str, dict[str, dict[str, Any]]] = {}
+        self._indexes_ready = False
 
     @staticmethod
     def _is_guest_user(user_id: str) -> bool:
@@ -32,6 +33,22 @@ class WordleRepository:
             raise RuntimeError("Mongo database is not initialized")
 
         return mongo_manager.db[COLLECTION_NAME]
+
+    async def ensure_indexes(self) -> None:
+        if self._indexes_ready:
+            return
+
+        collection = self._collection()
+        await collection.create_index("game_id", unique=True, name="wordle_game_id_unique")
+        await collection.create_index(
+            [("user_id", 1), ("status", 1), ("started_at", -1)],
+            name="wordle_user_status_started",
+        )
+        await collection.create_index(
+            [("user_id", 1), ("started_at", -1)],
+            name="wordle_user_started",
+        )
+        self._indexes_ready = True
 
     async def create_game(
         self,

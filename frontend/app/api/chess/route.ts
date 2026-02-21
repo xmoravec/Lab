@@ -23,6 +23,8 @@ export async function POST(request: Request): Promise<Response> {
     path: "/api/games/chess",
     authMode: "optional",
     guestId,
+    forwardedFor: request.headers.get("x-forwarded-for") ?? undefined,
+    realIp: request.headers.get("x-real-ip") ?? undefined,
     body: payload,
   });
 }

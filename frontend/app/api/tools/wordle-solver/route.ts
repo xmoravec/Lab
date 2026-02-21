@@ -15,6 +15,8 @@ export async function POST(request: Request): Promise<Response> {
     method: "POST",
     path: "/api/tools/wordle_solver/solve",
     authMode: "none",
+    forwardedFor: request.headers.get("x-forwarded-for") ?? undefined,
+    realIp: request.headers.get("x-real-ip") ?? undefined,
     body: {
       difficulty: payload.difficulty,
       clueRows: payload.clueRows,

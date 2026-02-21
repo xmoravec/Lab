@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export function SiteFooter() {
   const year = new Date().getFullYear();
 
@@ -18,6 +20,11 @@ export function SiteFooter() {
 
         <div className="text-xs text-zinc-500 md:text-right">
           <p>The Playground Lab</p>
+          <p className="mt-1">
+            <Link href="/privacy" className="font-medium text-cyan-300 transition hover:text-cyan-200">
+              Privacy Policy
+            </Link>
+          </p>
           <p className="mt-1">© {year} xmoravec. All rights reserved.</p>
         </div>
       </div>
