@@ -323,3 +323,42 @@ This gives a deterministic “ready” signal and a reusable function for future
 2. Add tests and CI checks for API + frontend contracts
 3. Expand multi-game frontend modules and shared game shell patterns
 4. Add richer account profile settings, avatar management, and friend systems
+
+## Planned deployment
+
+### Target stack (current plan)
+
+- Frontend: Vercel (Next.js production hosting)
+- Backend: Railway (Dockerized FastAPI service)
+- Database: MongoDB Atlas M0 (free/shared cluster tier)
+- Edge/DNS: Cloudflare (DNS, TLS proxying, and edge security controls)
+
+This stack keeps operational complexity low for a personal project while remaining suitable for low-to-medium early traffic.
+
+### Technology fit summary
+
+- Vercel
+  - Natural fit for App Router + NextAuth workflows.
+  - Minimal ops burden for frontend deployments and environment management.
+- Railway
+  - Supports long-running containerized Python services and straightforward Docker deploys.
+  - Good balance of simplicity and capability without self-managing a VM.
+- Atlas M0
+  - Viable launch-tier option for early usage and cost minimization.
+  - Should be treated as an entry tier with eventual upgrade path if usage grows.
+- Cloudflare
+  - Complements Vercel/Railway with domain management and protective edge controls.
+  - Useful location for coarse traffic filtering before requests reach app infrastructure.
+
+### Pre/post-deployment considerations (in scope)
+
+- WebSocket pathing and proxy behavior
+  - Near-future real-time features should reserve a stable API pathing strategy (for example, dedicated realtime endpoint/subpath) and verify proxy compatibility end-to-end (Cloudflare edge, domain routing, Railway ingress, backend ASGI handling).
+  - Validate idle timeout behavior and reconnect strategy before enabling production realtime flows.
+- Rate limiting (required before public rollout)
+  - Add app-level rate limiting for auth and gameplay mutation endpoints to reduce abuse risk and protect free-tier resources.
+  - Keep edge-level controls in Cloudflare as a first layer, with backend enforcement as source of truth.
+- Cost guardrails (required)
+  - Enable provider budget alerts and spending notifications across Vercel, Railway, and Atlas.
+  - Define explicit upgrade triggers (for example, sustained latency, memory pressure, connection saturation) so scaling decisions are deliberate.
+  - Prefer conservative defaults (single backend service, right-sized resources) and revisit only when real usage data supports expansion.
