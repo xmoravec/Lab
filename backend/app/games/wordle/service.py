@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime, timezone
-from functools import lru_cache
 from random import choice
-from typing import Any, NoReturn, cast
-
-from wordfreq import top_n_list
+from typing import Any, NoReturn
 
 from app.games.wordle.repository import wordle_repository
 from app.games.wordle.schemas import (
@@ -27,70 +23,10 @@ from app.games.wordle.schemas import (
     WordleRevealAnswerRequest,
     WordleRevealAnswerResponse,
 )
+from app.games.wordle.word_bank import choose_target_word, get_word_bank_context, is_allowed_guess
 
 MAX_ATTEMPTS = 6
 WORD_LENGTH = 5
-COMMON_POOL_SIZE = 2000
-EXTENDED_POOL_SIZE = 8000
-GUESS_POOL_SIZE = 25000
-WORD_PATTERN = re.compile(r"^[a-z]{5}$")
-
-FALLBACK_WORDS = [
-    "about",
-    "angle",
-    "apple",
-    "badge",
-    "beach",
-    "blaze",
-    "brain",
-    "brick",
-    "bring",
-    "candy",
-    "chair",
-    "clear",
-    "cloud",
-    "crane",
-    "dance",
-    "dream",
-    "eager",
-    "earth",
-    "flame",
-    "fresh",
-    "giant",
-    "glove",
-    "grape",
-    "green",
-    "happy",
-    "house",
-    "joker",
-    "light",
-    "magic",
-    "metal",
-    "music",
-    "noble",
-    "ocean",
-    "panel",
-    "party",
-    "pearl",
-    "plane",
-    "pride",
-    "quest",
-    "quiet",
-    "river",
-    "royal",
-    "shiny",
-    "smile",
-    "sound",
-    "stone",
-    "storm",
-    "table",
-    "tiger",
-    "vivid",
-    "water",
-    "whale",
-    "world",
-    "zesty",
-]
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -124,112 +60,12 @@ def evaluate_guess(guess: str, target: str) -> list[TileState]:
     return result
 
 
-def _normalize_words(words: list[str]) -> list[str]:
-    cleaned: list[str] = []
-    seen: set[str] = set()
-
-    for raw_word in words:
-        normalized = raw_word.strip().lower()
-        if normalized in seen:
-            continue
-        if WORD_PATTERN.match(normalized) is None:
-            continue
-        seen.add(normalized)
-        cleaned.append(normalized)
-
-    return cleaned
-
-
-def _fallback_result(reason: str) -> tuple[list[str], str, bool, str]:
-    fallback = _normalize_words(FALLBACK_WORDS)
-    return (
-        fallback,
-        "fallback",
-        True,
-        f"Word frequency source unavailable ({reason}). Running in limited dictionary mode.",
-    )
-
-
-@lru_cache(maxsize=1)
-def _load_ranked_words() -> tuple[list[str], str, bool, str | None]:
-    try:
-        ranked = top_n_list("en", EXTENDED_POOL_SIZE * 3)
-    except Exception as error:  # noqa: BLE001
-        logger.warning("wordfreq top_n_list failed; using fallback list error=%s", error)
-        return _fallback_result(type(error).__name__)
-
-    normalized = _normalize_words(ranked)
-    if not normalized:
-        logger.warning("wordfreq produced no valid 5-letter words; using fallback list")
-        return _fallback_result("empty-wordfreq-result")
-
-    return normalized, "wordfreq", False, None
-
-
-@lru_cache(maxsize=1)
-def _word_bank_context() -> dict[str, Any]:
-    ranked_words, source, limited_word_bank, notice = _load_ranked_words()
-
-    extended_pool = ranked_words[:EXTENDED_POOL_SIZE]
-    common_pool = ranked_words[:COMMON_POOL_SIZE]
-
-    if not common_pool:
-        common_pool = ranked_words
-    if not extended_pool:
-        extended_pool = common_pool
-
-    candidate_guesses = ranked_words[:GUESS_POOL_SIZE] or ranked_words
-
-    return {
-        "pools": {
-            WordleDifficulty.COMMON: common_pool,
-            WordleDifficulty.EXTENDED: extended_pool,
-        },
-        "allowed_guesses": set(candidate_guesses),
-        "source": source,
-        "limited_word_bank": limited_word_bank,
-        "notice": notice,
-    }
-
-
-def choose_target_word(difficulty: WordleDifficulty) -> str:
-    context = _word_bank_context()
-    pool = cast(list[str], context["pools"][difficulty])
-    return choice(pool)
-
-
-def is_allowed_guess(guess: str, difficulty: WordleDifficulty) -> bool:
-    context = _word_bank_context()
-    if difficulty not in context["pools"]:
-        return False
-    return guess in context["allowed_guesses"]
-
-
-def _pool_for_difficulty(difficulty: WordleDifficulty) -> list[str]:
-    context = _word_bank_context()
-    return cast(list[str], context["pools"][difficulty])
-
-
-def get_word_bank_context() -> dict[str, Any]:
-    return _word_bank_context()
-
-
-def get_words_for_difficulty(difficulty: WordleDifficulty) -> list[str]:
-    return _pool_for_difficulty(difficulty)
-
-
 def _rejected_guess_response(
     *,
     game_document: dict[str, Any],
     message: str,
     guess: str,
 ) -> GuessWordleResponse:
-    logger.warning(
-        "Wordle guess rejected game_id=%s guess=%s reason=%s",
-        game_document["game_id"],
-        guess,
-        message,
-    )
     return GuessWordleResponse(
         accepted=False,
         message=message,
@@ -244,18 +80,11 @@ def _raise_service_error(
     game_id: str | None = None,
     guess: str | None = None,
 ) -> NoReturn:
-    logger.warning(
-        "Wordle validation error status=%s message=%s game_id=%s guess=%s",
-        status_code,
-        message,
-        game_id,
-        guess,
-    )
     raise WordleServiceError(status_code=status_code, message=message)
 
 
 def _to_game_state(game_document: dict[str, Any], include_answer: bool) -> WordleGameState:
-    word_bank_context = _word_bank_context()
+    word_bank_context = get_word_bank_context()
     should_include_answer = include_answer or bool(game_document.get("admin_answer_revealed", False))
     board = [
         GuessRecord(
@@ -313,12 +142,14 @@ class WordleService:
             for game_document in history_documents
         ]
 
+        word_bank_context = get_word_bank_context()
+
         return WordleMenuResponse(
             available_difficulties=[WordleDifficulty.COMMON, WordleDifficulty.EXTENDED],
             active_game=active_game,
             previous_games=previous_games,
-            limited_word_bank=_word_bank_context()["limited_word_bank"],
-            word_bank_notice=_word_bank_context()["notice"],
+            limited_word_bank=word_bank_context["limited_word_bank"],
+            word_bank_notice=word_bank_context["notice"],
         )
 
     async def start_game(self, user_id: str, request: StartWordleRequest) -> StartWordleResponse:

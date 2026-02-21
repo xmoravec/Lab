@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { type ReactElement, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   fetchChessMatch,
@@ -20,6 +20,8 @@ import {
   type InvitationColorPreference,
 } from "@/app/games/chess/lib/api";
 import { ApiRequestError } from "@/lib/http-client";
+import { loadSoundEnabled, saveSoundEnabled, unlockAudioContext } from "@/lib/sound/audio";
+import { playChessSound } from "@/lib/sound/game-sounds";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const TIME_CONTROL_OPTIONS = [60, 300, 600, 1500, 3600] as const;
@@ -52,6 +54,7 @@ const PIECE_MATERIAL_VALUES: Record<string, number> = {
   N: 3,
   P: 1,
 };
+const CHESS_SOUND_SETTING_KEY = "lab:chess:sounds";
 
 type BotPlayAs = "white" | "black" | "random";
 type ViewMode = "menu" | "game";
@@ -286,10 +289,33 @@ function movePieceLabelFromSan(san: string): string {
   return "P";
 }
 
+function classifyChessMoveSound(san: string):
+  | "move"
+  | "capture"
+  | "check"
+  | "castle"
+  | "game-end" {
+  if (san.includes("#")) {
+    return "game-end";
+  }
+  if (san.startsWith("O-O")) {
+    return "castle";
+  }
+  if (san.includes("+")) {
+    return "check";
+  }
+  if (san.includes("x")) {
+    return "capture";
+  }
+  return "move";
+}
+
 export default function ChessPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("menu");
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [notice, setNotice] = useState("Choose a mode and press Play.");
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   const [incomingInvitations, setIncomingInvitations] = useState<ChessInvitationSummary[]>([]);
   const [outgoingInvitations, setOutgoingInvitations] = useState<ChessInvitationSummary[]>([]);
@@ -320,6 +346,27 @@ export default function ChessPage() {
     white: 0,
     black: 0,
   });
+  const moveSoundTrackerRef = useRef<{ matchId: string | null; historyLength: number }>({
+    matchId: null,
+    historyLength: 0,
+  });
+  const statusSoundTrackerRef = useRef<{ matchId: string | null; status: string | null }>({
+    matchId: null,
+    status: null,
+  });
+
+  useEffect(() => {
+    setSoundEnabled(loadSoundEnabled(CHESS_SOUND_SETTING_KEY));
+  }, []);
+
+  const setSoundPreference = useCallback((enabled: boolean) => {
+    setSoundEnabled(enabled);
+    saveSoundEnabled(CHESS_SOUND_SETTING_KEY, enabled);
+    if (enabled) {
+      void unlockAudioContext();
+      playChessSound("select", true);
+    }
+  }, []);
 
   const legalMovesSet = useMemo(() => new Set(match?.legalMoves ?? []), [match?.legalMoves]);
   const selectedMoveTargets = useMemo(() => {
@@ -385,6 +432,33 @@ export default function ChessPage() {
     }
 
     void bootstrap();
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+
+    async function resolveAuthState() {
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        if (!response.ok || disposed) {
+          return;
+        }
+
+        const session = (await response.json()) as { user?: { id?: string | null } | null } | null;
+        if (!disposed) {
+          setIsAuthenticated(Boolean(session?.user?.id));
+        }
+      } catch {
+        if (!disposed) {
+          setIsAuthenticated(false);
+        }
+      }
+    }
+
+    void resolveAuthState();
     return () => {
       disposed = true;
     };
@@ -575,6 +649,7 @@ export default function ChessPage() {
     if (!match.canSubmitMoves) {
       setDeniedSquare(square);
       setNotice(`It is ${colorLabel(match.summary.turnColor)} to move.`);
+      playChessSound("illegal", soundEnabled);
       return;
     }
 
@@ -587,33 +662,63 @@ export default function ChessPage() {
       if (!pieceColor || pieceColor !== match.summary.turnColor) {
         setDeniedSquare(square);
         setNotice(`Select a ${colorLabel(match.summary.turnColor)} piece.`);
+        playChessSound("illegal", soundEnabled);
         return;
       }
       setSelectedFromSquare(square);
+      playChessSound("select", soundEnabled);
       return;
     }
 
     if (selectedFromSquare === square) {
       setSelectedFromSquare(null);
+      playChessSound("select", soundEnabled);
       return;
     }
 
+    let targetSquare = square;
+    const selectedPiece = pieceAtSquare(selectedFromSquare);
     const pieceOnTargetSquare = pieceAtSquare(square);
     if (pieceOnTargetSquare && getPieceColor(pieceOnTargetSquare) === match.summary.turnColor) {
-      setSelectedFromSquare(square);
-      return;
+      const turnColorPrefix = match.summary.turnColor === "white" ? "w" : "b";
+      const selectedIsKing = selectedPiece === `${turnColorPrefix}K`;
+      const targetIsRook = pieceOnTargetSquare === `${turnColorPrefix}R`;
+      const sameRank = selectedFromSquare[1] === square[1];
+
+      if (selectedIsKing && targetIsRook && sameRank) {
+        const rank = selectedFromSquare[1];
+        const castlingSquare =
+          square[0] === "h"
+            ? `g${rank}`
+            : square[0] === "a"
+              ? `c${rank}`
+              : null;
+
+        if (castlingSquare && legalMovesSet.has(`${selectedFromSquare}${castlingSquare}`)) {
+          targetSquare = castlingSquare;
+        } else {
+          setSelectedFromSquare(square);
+          playChessSound("select", soundEnabled);
+          return;
+        }
+      } else {
+        setSelectedFromSquare(square);
+        playChessSound("select", soundEnabled);
+        return;
+      }
     }
 
     const promotion =
-      (selectedFromSquare[1] === "7" && square[1] === "8") ||
-      (selectedFromSquare[1] === "2" && square[1] === "1")
+      (selectedFromSquare[1] === "7" && targetSquare[1] === "8") ||
+      (selectedFromSquare[1] === "2" && targetSquare[1] === "1")
         ? "q"
         : undefined;
 
-    const uciCandidate = `${selectedFromSquare}${square}${promotion ?? ""}`;
-    if (!legalMovesSet.has(uciCandidate) && !legalMovesSet.has(`${selectedFromSquare}${square}`)) {
+    const uciCandidate = `${selectedFromSquare}${targetSquare}${promotion ?? ""}`;
+    if (!legalMovesSet.has(uciCandidate) && !legalMovesSet.has(`${selectedFromSquare}${targetSquare}`)) {
       setNotice("Illegal move.");
-      setInvalidSquare(square);
+      setInvalidSquare(targetSquare);
+      playChessSound("illegal", soundEnabled);
       return;
     }
 
@@ -622,7 +727,7 @@ export default function ChessPage() {
       const response = await submitChessMove({
         matchId: match.summary.matchId,
         fromSquare: selectedFromSquare,
-        toSquare: square,
+        toSquare: targetSquare,
         promotion,
       });
       setMatch(response.match);
@@ -632,6 +737,7 @@ export default function ChessPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to submit move";
       setNotice(message);
+      playChessSound("illegal", soundEnabled);
     } finally {
       setIsSubmittingMove(false);
     }
@@ -654,6 +760,54 @@ export default function ChessPage() {
     }
     return findKingSquare(match.board, match.summary.turnColor);
   }, [match]);
+
+  useEffect(() => {
+    if (!match) {
+      return;
+    }
+
+    const tracker = moveSoundTrackerRef.current;
+    const currentMatchId = match.summary.matchId;
+    if (tracker.matchId !== currentMatchId) {
+      moveSoundTrackerRef.current = {
+        matchId: currentMatchId,
+        historyLength: match.history.length,
+      };
+      return;
+    }
+
+    if (match.history.length > tracker.historyLength) {
+      const latestMove = match.history[match.history.length - 1];
+      if (latestMove?.san) {
+        playChessSound(classifyChessMoveSound(latestMove.san), soundEnabled);
+      }
+      moveSoundTrackerRef.current = {
+        matchId: currentMatchId,
+        historyLength: match.history.length,
+      };
+    }
+  }, [match, soundEnabled]);
+
+  useEffect(() => {
+    if (!match) {
+      return;
+    }
+
+    const tracker = statusSoundTrackerRef.current;
+    const currentMatchId = match.summary.matchId;
+    const currentStatus = match.summary.status;
+
+    if (tracker.matchId !== currentMatchId) {
+      statusSoundTrackerRef.current = { matchId: currentMatchId, status: currentStatus };
+      return;
+    }
+
+    if (tracker.status !== currentStatus && currentStatus !== "active") {
+      playChessSound("game-end", soundEnabled);
+    }
+
+    statusSoundTrackerRef.current = { matchId: currentMatchId, status: currentStatus };
+  }, [match, soundEnabled]);
 
   useEffect(() => {
     if (!match) {
@@ -796,6 +950,27 @@ export default function ChessPage() {
         <p className="mt-5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-100">
           {isBootstrapping ? "Loading Chess..." : notice}
         </p>
+
+        {!isAuthenticated ? (
+          <div className="mt-4 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <p className="font-semibold">Guest mode: self-play and bot are available.</p>
+            <p className="mt-1 text-amber-200/90">Sign in is required for multiplayer invitations and personalized leaderboards.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Link
+                href="/account/sign-in"
+                className="rounded-lg border border-amber-300/50 bg-amber-300/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-100 transition hover:bg-amber-300/20"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/leaderboards"
+                className="rounded-lg border border-amber-300/40 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-amber-100 transition hover:bg-amber-300/15"
+              >
+                Leaderboards
+              </Link>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {viewMode === "menu" ? (
@@ -823,6 +998,35 @@ export default function ChessPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950/70 p-3">
+              <label className="text-xs uppercase tracking-widest text-zinc-400">Sound</label>
+              <p className="mt-1 text-xs text-zinc-500">Subtle effects for select, move, capture, check, and game-end.</p>
+              <div className="mt-2 inline-flex rounded-lg border border-zinc-700 p-1">
+                <button
+                  type="button"
+                  onClick={() => setSoundPreference(true)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    soundEnabled
+                      ? "bg-zinc-700 text-zinc-100"
+                      : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  }`}
+                >
+                  On
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSoundPreference(false)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    !soundEnabled
+                      ? "bg-zinc-700 text-zinc-100"
+                      : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                  }`}
+                >
+                  Off
+                </button>
+              </div>
             </div>
 
             <button
@@ -876,6 +1080,7 @@ export default function ChessPage() {
             </div>
           </article>
 
+          {isAuthenticated ? (
           <article className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-4">
             <h2 className="text-base font-semibold text-zinc-100">Invitations</h2>
 
@@ -972,6 +1177,26 @@ export default function ChessPage() {
               )}
             </div>
           </article>
+          ) : (
+          <article className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-4">
+            <h2 className="text-base font-semibold text-zinc-100">Multiplayer</h2>
+            <p className="mt-2 text-sm text-zinc-300">Sign in to send invitations and play account-vs-account matches.</p>
+            <div className="mt-3 flex gap-2">
+              <Link
+                href="/account/sign-in"
+                className="rounded-lg border border-cyan-500/40 bg-cyan-500/15 px-3 py-1.5 text-xs font-medium text-cyan-100 transition hover:bg-cyan-500/25"
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/account/sign-up"
+                className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-100 transition hover:bg-zinc-700"
+              >
+                Create account
+              </Link>
+            </div>
+          </article>
+          )}
 
           <article className="rounded-2xl border border-zinc-800 bg-zinc-900/75 p-4">
             <h2 className="text-base font-semibold text-zinc-100">Active matches</h2>
@@ -1125,9 +1350,15 @@ export default function ChessPage() {
                             void handleSquareClick(square);
                           }}
                           disabled={!match.canSubmitMoves}
-                          className={`relative aspect-square border border-black/10 transition ${baseTone} ${selected ? "ring-4 ring-cyan-300 ring-inset" : ""} ${legalTarget ? "ring-2 ring-emerald-300/80 ring-inset" : ""} ${denied ? "ring-2 ring-amber-300 ring-inset" : ""} ${invalid ? "ring-2 ring-rose-300 ring-inset bg-rose-500/80" : ""} ${checked ? "ring-4 ring-rose-400 ring-inset" : ""} ${match.canSubmitMoves ? "hover:brightness-110" : "cursor-default opacity-95"} ${isLastMoveFrom ? "after:pointer-events-none after:absolute after:inset-1 after:rounded-sm after:border after:border-sky-200/45" : ""} ${isLastMoveTo ? "after:pointer-events-none after:absolute after:inset-1 after:rounded-sm after:border after:border-sky-100/80" : ""}`}
+                          className={`relative aspect-square border border-black/10 transition ${baseTone} ${selected ? "ring-4 ring-cyan-300 ring-inset" : ""} ${legalTarget ? "ring-2 ring-emerald-300/80 ring-inset" : ""} ${denied ? "ring-2 ring-amber-300 ring-inset" : ""} ${invalid ? "ring-2 ring-rose-300 ring-inset bg-rose-500/80" : ""} ${checked ? "ring-4 ring-rose-400 ring-inset" : ""} ${match.canSubmitMoves ? "hover:brightness-110" : "cursor-default opacity-95"}`}
                           aria-label={`Square ${square}`}
                         >
+                          {isLastMoveTo ? (
+                            <span className="pointer-events-none absolute inset-1 rounded-sm border-2 border-cyan-300/85" />
+                          ) : null}
+                          {isLastMoveFrom ? (
+                            <span className="pointer-events-none absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-zinc-800/50 bg-zinc-300/90" />
+                          ) : null}
                           {legalTarget ? (
                             hasPiece ? (
                               <span className="pointer-events-none absolute inset-2 rounded-md border-3 border-emerald-200/90" />

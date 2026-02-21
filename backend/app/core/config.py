@@ -4,15 +4,21 @@ import json
 from typing import Any
 
 from pydantic import field_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "Lab API"
     api_prefix: str = "/api"
+    app_env: str = "development"
 
     mongo_uri: str = "mongodb://mongo:27017/lab"
     mongo_db_name: str = "lab"
+    mongo_max_pool_size: int = 10
+    enable_gzip: bool = True
+    gzip_minimum_size_bytes: int = 500
+    gzip_compress_level: int = 5
     frontend_probe_url: str = "http://frontend:3000"
     frontend_probe_timeout_seconds: float = 1.5
     internal_auth_secret: str = "lab-internal-dev-secret"
@@ -52,6 +58,29 @@ class Settings(BaseSettings):
                 pass
 
         return [origin.strip() for origin in raw_value.split(",") if origin.strip()]
+
+    @property
+    def is_production_like(self) -> bool:
+        normalized = self.app_env.strip().lower()
+        return normalized in {"production", "staging"}
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if self.is_production_like and self.internal_auth_secret == "lab-internal-dev-secret":
+            raise ValueError("INTERNAL_AUTH_SECRET must be set to a non-default value in production/staging")
+        if self.mongo_max_pool_size < 1:
+            raise ValueError("MONGO_MAX_POOL_SIZE must be at least 1")
+        if self.gzip_minimum_size_bytes < 1:
+            raise ValueError("GZIP_MINIMUM_SIZE_BYTES must be at least 1")
+        if self.gzip_compress_level < 1 or self.gzip_compress_level > 9:
+            raise ValueError("GZIP_COMPRESS_LEVEL must be between 1 and 9")
+        if self.is_production_like:
+            origins = self.cors_origins_list
+            if not origins:
+                raise ValueError("CORS_ORIGINS must be set in production/staging")
+            if "*" in origins:
+                raise ValueError("CORS_ORIGINS cannot include '*' in production/staging")
+        return self
 
 
 settings = Settings()

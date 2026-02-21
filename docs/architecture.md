@@ -24,10 +24,12 @@ Current implementation target is a stable local development baseline (phase 1).
 ### Containers
 
 1. `frontend`
-   - Runs `next dev` with host binding for Docker
-   - Uses polling-friendly file watch env for reliable autoreload in mounted volumes
+  - Base compose runs `next start` from a production build target
+  - Development override runs `next dev` with polling-friendly file watch env
 2. `backend`
-   - Runs `uvicorn` with reload mode
+  - Base compose runs `uvicorn` without reload
+  - Development override runs `uvicorn` with reload mode
+  - Runtime port is configurable via `PORT` (`8000` default for local compose; platform-provided in Railway)
    - Connects to Mongo during lifespan startup
    - Emits one startup-ready status report
 3. `mongo`
@@ -37,7 +39,10 @@ Current implementation target is a stable local development baseline (phase 1).
 ### Compose entrypoint
 
 - Compose file: `docker/docker-compose.yml`
-- Standard command: `docker compose -f docker/docker-compose.yml up --build`
+- Production-like local run: `docker compose -f docker/docker-compose.yml up --build`
+- Development hot-reload run: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build`
+- Base compose is production-oriented and does not include source bind mounts.
+- Development override adds source bind mounts and development image targets.
 
 ### Network model
 
@@ -67,7 +72,11 @@ Current implementation target is a stable local development baseline (phase 1).
 
 - Settings are centralized in `app/core/config.py` with `pydantic-settings`.
 - CORS origins support both CSV and JSON-list env formats.
-- Environment defaults favor local Docker development while remaining deployment-safe.
+- Production/staging config validation requires explicit non-empty CORS origins and blocks wildcard (`*`) origins.
+- Mongo connection pool sizing is explicit via `MONGO_MAX_POOL_SIZE` (default `10`) to avoid exhausting Atlas M0 connections under burst traffic.
+- Response compression is enabled via FastAPI `GZipMiddleware` (env-driven defaults: enabled, minimum size `500`, compress level `5`) to reduce Railway egress cost.
+- Production-like compose requires explicit secrets (`INTERNAL_AUTH_SECRET`, `AUTH_SECRET`) instead of secret defaults.
+- Development override keeps convenience secret fallbacks for local programming workflows.
 - Internal service-to-service requests are guarded by `INTERNAL_AUTH_SECRET` for authenticated game/account endpoints.
 
 ### Auth model
@@ -81,6 +90,7 @@ Current implementation target is a stable local development baseline (phase 1).
 ### Mongo lifecycle
 
 - Startup: create client, select DB, ping
+- Startup connection reuses a singleton app-level Mongo manager and does not recreate clients per request.
 - Startup is fail-fast: if ping fails, API startup exits with an explicit error
 - Shutdown: close client cleanly
 - Connection state is tracked and exposed through health/ping behavior
@@ -89,14 +99,22 @@ Current implementation target is a stable local development baseline (phase 1).
 
 - `report_status` in `app/services/status_reporter.py`
 - Runs once on startup after Mongo connection attempt
-- Logs structured payload with:
+- Logs a concise startup summary with:
   - app identity and Python version
   - key module versions
   - Mongo connectivity details
   - frontend probe result
   - active CORS policy snapshot
+- Full structured payload remains available at debug log level.
 
 This gives a deterministic “ready” signal and a reusable function for future diagnostics.
+
+### Abuse controls and rate-limit telemetry
+
+- App-level rate limiting is enabled for sensitive/public endpoints (auth, gameplay mutations, tools, and system probes).
+- Rate-limit responses expose transparent headers (`x-rate-limit-*`, and `retry-after` on `429`) so clients can back off gracefully.
+- Rate-limit incidents are logged with privacy-safe identity hashing for operational visibility.
+- Internal observability endpoint `GET /api/rate-limit/stats` is available behind internal auth for quick incident review.
 
 ### Catalog data source
 
@@ -109,6 +127,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Backend Wordle implementation is encapsulated under `backend/app/games/wordle/`.
 - Main responsibilities are split into:
   - `service.py` for gameplay orchestration, word-bank sourcing/validation, and tile evaluation logic
+  - `word_bank.py` for cached dictionary loading, difficulty pools, and allowed-guess policy
   - `repository.py` for MongoDB persistence
 - Mongo collection `wordle_games` stores all rounds, guesses, and outcomes.
 - Each game document is scoped to a `user_id`; menu/history/start/guess are fully personalized.
@@ -127,6 +146,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 
 - Backend Chess implementation is encapsulated under `backend/app/games/chess/`.
 - `python-chess` is used as authoritative game-rules engine for legal moves, game-state transitions, check/checkmate/stalemate detection, and FEN continuity.
+- Chess bot move-search and static board-evaluation heuristics are isolated in `bot_engine.py`, while `service.py` remains responsible for orchestration, turn flow, and persistence boundaries.
 - If `python-chess` is temporarily unavailable in runtime (e.g., stale container image), Chess actions return a clear `503` service error while core app routes (including homepage/catalog) remain available.
 - Mongo collections:
   - `chess_invitations` for account-to-account invitation workflow
@@ -137,6 +157,7 @@ This gives a deterministic “ready” signal and a reusable function for future
   - `multiplayer` (invitation-based account matches)
   - `self-play` (same account controls both colors)
   - `bot` (single-player against a basic built-in heuristic bot)
+- Guest identities can access Chess `self-play` and `bot` modes; invitation-driven multiplayer remains sign-in required.
 - Bot difficulty is selectable from UI as `easy`, `medium` (default), or `hard` and is persisted per bot match.
 - Current bot move policy combines tactical checks (mate-in-1 detection) with depth-based search:
   - `easy`: depth-1 capture-priority heuristic with random tie-break
@@ -164,32 +185,43 @@ This gives a deterministic “ready” signal and a reusable function for future
 
 - App Router structure under `frontend/app/`
 - Typed API clients under `frontend/lib/`
+- Shared frontend auth contract types are centralized in `frontend/lib/contracts/auth.ts` to reduce duplicated account payload definitions across auth/session and account onboarding flows.
 - Home page features a hero, spotlight game, and scalable experiment sections using backend-sourced content.
 - Home page spotlight is presented as a horizontal carousel that rotates through available playable games and live tools with screenshot-led cards.
+- Above-the-fold screenshot assets on Home/Games/Tools use Next Image high-priority loading for first-visible cards/slides, and spotlight now renders only the active slide image to reduce initial image work and improve LCP.
 - A global footer is rendered from root layout across the app, with prominent author attribution (`xmoravec`), personal website reference (`www.xmoravec.com`), and planned deployment domain (`lab.xmoravec.com`).
+- Footer includes a persistent Privacy Policy link.
 - Games page provides a richer catalog view with playable-first grouping and summary stats.
 - Shared game cards expose clickable game titles and a prominent playable CTA for fast entry into active games.
 - Game and tool catalog cards now use curated screenshots from `frontend/public/assets/screenshots/` (`chess.png`, `wordle.png`, `wordle_solver.png`) to improve visual presentation across Home, Games, and Tools pages.
 - Account pages (`/account/sign-in`, `/account/sign-up`) provide credentials onboarding and Google auth handoff.
+- Account sign-in/sign-up pages include direct privacy-policy acknowledgment links.
 - Leaderboards page (`/leaderboards`) features podium and full ranking table.
 - Tools index page (`/tools`) provides a catalog of utility experiences.
 - Wordle Solver tool UI is served at `/tools/wordle_solver` with multi-row green/yellow/gray clue inputs, ranked suggestions, and candidate previews.
+- Privacy Policy page is available at `/privacy` and documents account data, cookies, analytics, processors, retention, and user choices.
+- Cookie consent banner is shown from root layout and supports a low-friction choice between required-only cookies and optional analytics.
+- Vercel Analytics is client-gated by explicit consent and does not initialize before consent is accepted.
 - Dev Log page has been removed from the product navigation and route surface.
 - Wordle UI is encapsulated under `frontend/app/games/wordle/` and now consumes authenticated Next.js proxy routes.
+- Wordle gameplay now includes lightweight synthesized audio cues (Web Audio API) for keypress, submit, invalid input, hint, and win/loss outcomes, with a per-game menu toggle persisted in localStorage.
 - Wordle now opens in a menu-first flow (including when an active game exists) and requires explicit Resume/Play action before entering the board view.
 - Admin reveal controls in Wordle are visible only while admin mode is currently enabled (live-synced from server cookie state), preventing stale visibility after admin mode is switched off.
-- Chess UI is encapsulated under `frontend/app/games/chess/` and consumes one authenticated Next.js proxy route at `frontend/app/api/chess/route.ts`.
+- Chess UI is encapsulated under `frontend/app/games/chess/` and consumes one Next.js proxy route at `frontend/app/api/chess/route.ts` with optional auth (guest-enabled self-play/bot, account-required multiplayer).
+- Chess gameplay now includes subtle event SFX with small local WAV assets under `frontend/public/assets/sounds/chess/` (select, move, capture, check, castle, illegal, game-end), plus a per-game menu toggle persisted in localStorage.
 - Chess page now opens to a menu-first flow (mode/time-control selection and invitations) and transitions to a dominant board view after explicit Play/open-match action.
 - Chess board rendering uses generated SVG piece assets under `frontend/public/assets/chess/pieces/` for higher-fidelity visuals.
 - Player bars display captured-piece icons per color and show a material-lead `+N` indicator on the side currently ahead in material.
 - In-game board view defaults to an extra-large layout and provides a compact size toggle in the game header.
 - Piece-selection UX supports direct own-piece reselection: clicking another of your pieces while one is selected switches selection instead of surfacing an illegal-move warning.
+- Castling keeps standard king-to-target-square movement and also supports a king-to-rook shortcut gesture (drop/click king onto own rook square) that resolves to legal castling squares.
 - Board squares subtly indicate the previous move (source and destination) for quick turn-context awareness.
 - Wordle pre-game menu exposes a subtle board-width mode control (`Classic (5)` default, `Auto` lab mode) while keeping 5-letter gameplay as the primary experience.
 
 ### Authenticated proxy routing
 
 - Frontend route handlers under `frontend/app/api/wordle/*` proxy to backend.
+- Frontend Chess proxy route (`frontend/app/api/chess/route.ts`) also supports guest identity forwarding for guest-eligible actions.
 - Proxy layer injects internal shared-secret and authenticated user headers from server-side session.
 - For guest gameplay, proxy routes inject a generated guest session header (`x-guest-id`) bound to a browser-session cookie.
 - Backend identity dependencies normalize and reject blank/whitespace-only identity headers to avoid ambiguous principal resolution.
@@ -315,3 +347,64 @@ This gives a deterministic “ready” signal and a reusable function for future
 2. Add tests and CI checks for API + frontend contracts
 3. Expand multi-game frontend modules and shared game shell patterns
 4. Add richer account profile settings, avatar management, and friend systems
+
+## Planned deployment
+
+### Target stack (current plan)
+
+- Frontend: Vercel (Next.js production hosting)
+- Backend: Railway (Dockerized FastAPI service)
+- Database: MongoDB Atlas M0 (free/shared cluster tier)
+- Edge/DNS: Cloudflare (DNS, TLS proxying, and edge security controls)
+
+This stack keeps operational complexity low for a personal project while remaining suitable for low-to-medium early traffic.
+
+### Deployment readiness snapshot
+
+- Frontend-to-backend URL env wiring
+  - Ready: frontend resolves backend URLs from environment (`NEXT_PUBLIC_API_BASE_URL`, `API_INTERNAL_BASE_URL`).
+- Backend health checks
+  - Ready: both `/api/health` and top-level `/health` endpoints are available.
+- Railway runtime port compatibility
+  - Ready: backend container binds to `${PORT}` (with local fallback to `8000`).
+- Mongo client reuse
+  - Ready: backend uses one singleton Mongo manager and reuses the same Motor client.
+- Mongo pool protection
+  - Ready: backend sets bounded pool size via `MONGO_MAX_POOL_SIZE` (default `10`).
+- Atlas network access model
+  - Ready for first deployment with temporary broad allowlist: use `0.0.0.0/0` only with compensating controls, then tighten later.
+
+### Technology fit summary
+
+- Vercel
+  - Natural fit for App Router + NextAuth workflows.
+  - Minimal ops burden for frontend deployments and environment management.
+  - Vercel Analytics is integrated in consent-gated mode (optional analytics only after opt-in).
+- Railway
+  - Supports long-running containerized Python services and straightforward Docker deploys.
+  - Good balance of simplicity and capability without self-managing a VM.
+- Atlas M0
+  - Viable launch-tier option for early usage and cost minimization.
+  - Should be treated as an entry tier with eventual upgrade path if usage grows.
+- Cloudflare
+  - Complements Vercel/Railway with domain management and protective edge controls.
+  - Useful location for coarse traffic filtering before requests reach app infrastructure.
+
+### Pre/post-deployment considerations (in scope)
+
+- Atlas network hardening (required before public rollout)
+  - Simple interpretation: Atlas asks you to allow only known source IPs; Railway may not always provide one stable outbound IP unless using specific paid features.
+  - First-deploy temporary posture: `0.0.0.0/0` is acceptable short-term for connectivity, but must be paired with strong credentials, least-privilege DB user roles, TLS, and alerting.
+  - Keep `0.0.0.0/0` explicitly temporary and schedule allowlist tightening when stable egress/private networking is available.
+  - If strict network isolation is required, plan upgrade to networking features that support fixed egress/private connectivity (Atlas M10+ for peering).
+
+- WebSocket pathing and proxy behavior
+  - Near-future real-time features should reserve a stable API pathing strategy (for example, dedicated realtime endpoint/subpath) and verify proxy compatibility end-to-end (Cloudflare edge, domain routing, Railway ingress, backend ASGI handling).
+  - Validate idle timeout behavior and reconnect strategy before enabling production realtime flows.
+- Rate limiting (required before public rollout)
+  - App-level rate limiting is already in place for auth/gameplay/system endpoints; continue tuning limits against real traffic.
+  - Keep edge-level controls in Cloudflare as a first layer, with backend enforcement as source of truth.
+- Cost guardrails (required)
+  - Enable provider budget alerts and spending notifications across Vercel, Railway, and Atlas.
+  - Define explicit upgrade triggers (for example, sustained latency, memory pressure, connection saturation) so scaling decisions are deliberate.
+  - Prefer conservative defaults (single backend service, right-sized resources) and revisit only when real usage data supports expansion.

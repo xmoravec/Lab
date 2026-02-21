@@ -2,23 +2,20 @@ import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 
+import type { BackendAccount, BackendCredentialsVerifyResponse } from "@/lib/contracts/auth";
+
 const backendBaseUrl = process.env.API_INTERNAL_BASE_URL ?? "http://backend:8000";
 const internalAuthSecret = process.env.BACKEND_INTERNAL_AUTH_SECRET ?? "lab-internal-dev-secret";
-
-type BackendAccount = {
-  userId: string;
-  email: string;
-  username: string;
-  displayName: string;
-  avatarUrl?: string | null;
-  isAdmin: boolean;
-};
-
-type BackendCredentialsVerifyResponse = {
-  account: BackendAccount;
-};
+const AUTH_PROXY_TIMEOUT_MS = 12_000;
 
 const ADMIN_SYNC_INTERVAL_MS = 60_000;
+
+if (
+  process.env.NODE_ENV === "production" &&
+  internalAuthSecret === "lab-internal-dev-secret"
+) {
+  throw new Error("BACKEND_INTERNAL_AUTH_SECRET must be set to a non-default value in production");
+}
 
 function sanitizeUsername(input: string): string {
   const raw = input.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_");
@@ -30,6 +27,8 @@ function sanitizeUsername(input: string): string {
 }
 
 async function verifyCredentials(email: string, password: string): Promise<BackendAccount | null> {
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => abortController.abort(), AUTH_PROXY_TIMEOUT_MS);
   const response = await fetch(`${backendBaseUrl}/api/auth/credentials/verify`, {
     method: "POST",
     headers: {
@@ -38,7 +37,13 @@ async function verifyCredentials(email: string, password: string): Promise<Backe
     },
     body: JSON.stringify({ email, password }),
     cache: "no-store",
-  });
+    signal: abortController.signal,
+  }).catch(() => null);
+  clearTimeout(timeoutHandle);
+
+  if (!response) {
+    return null;
+  }
 
   if (!response.ok) {
     return null;
@@ -56,6 +61,8 @@ async function upsertGoogleAccount(params: {
 }): Promise<BackendAccount | null> {
   const username = sanitizeUsername(params.email.split("@")[0] ?? "player");
 
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => abortController.abort(), AUTH_PROXY_TIMEOUT_MS);
   const response = await fetch(`${backendBaseUrl}/api/auth/oauth/google/upsert`, {
     method: "POST",
     headers: {
@@ -70,7 +77,13 @@ async function upsertGoogleAccount(params: {
       avatarUrl: params.avatarUrl ?? null,
     }),
     cache: "no-store",
-  });
+    signal: abortController.signal,
+  }).catch(() => null);
+  clearTimeout(timeoutHandle);
+
+  if (!response) {
+    return null;
+  }
 
   if (!response.ok) {
     return null;
@@ -85,6 +98,8 @@ async function fetchAccountById(params: {
   username: string;
   email: string;
 }): Promise<BackendAccount | null> {
+  const abortController = new AbortController();
+  const timeoutHandle = setTimeout(() => abortController.abort(), AUTH_PROXY_TIMEOUT_MS);
   const response = await fetch(`${backendBaseUrl}/api/auth/me`, {
     method: "GET",
     headers: {
@@ -95,7 +110,13 @@ async function fetchAccountById(params: {
       "x-user-email": params.email,
     },
     cache: "no-store",
-  });
+    signal: abortController.signal,
+  }).catch(() => null);
+  clearTimeout(timeoutHandle);
+
+  if (!response) {
+    return null;
+  }
 
   if (!response.ok) {
     return null;

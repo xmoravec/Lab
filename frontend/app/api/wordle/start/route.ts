@@ -1,15 +1,14 @@
-import { proxyBackendJson } from "@/lib/server/backend-api";
-import { getOrCreateGuestId } from "@/lib/server/guest-session";
+import { proxyBackendJsonFromRequest } from "@/lib/server/backend-api";
 
 export async function POST(request: Request): Promise<Response> {
   const payload = (await request.json()) as { difficulty: string; forceNew?: boolean };
-  const guestId = await getOrCreateGuestId();
 
-  return proxyBackendJson({
+  return proxyBackendJsonFromRequest({
+    request,
     method: "POST",
     path: "/api/games/wordle/start",
     authMode: "optional",
-    guestId,
+    includeGuestId: true,
     body: {
       difficulty: payload.difficulty,
       forceNew: payload.forceNew ?? false,

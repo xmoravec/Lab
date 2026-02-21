@@ -1,13 +1,11 @@
-import { proxyBackendJson } from "@/lib/server/backend-api";
-import { getOrCreateGuestId } from "@/lib/server/guest-session";
+import { proxyBackendJsonFromRequest } from "@/lib/server/backend-api";
 
-export async function GET(): Promise<Response> {
-  const guestId = await getOrCreateGuestId();
-
-  return proxyBackendJson({
+export async function GET(request: Request): Promise<Response> {
+  return proxyBackendJsonFromRequest({
+    request,
     method: "GET",
     path: "/api/games/wordle/menu",
     authMode: "optional",
-    guestId,
+    includeGuestId: true,
   });
 }

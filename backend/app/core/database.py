@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -13,20 +14,29 @@ class MongoManager:
         self.db: AsyncIOMotorDatabase[Any] | None = None
         self.connected: bool = False
         self.last_error: str | None = None
+        self._lock = asyncio.Lock()
 
     async def connect(self) -> None:
-        self.client = AsyncIOMotorClient(settings.mongo_uri)
-        self.db = self.client[settings.mongo_db_name]
-        if not await self.ping():
-            error_message = self.last_error or "Unknown Mongo connection error"
-            raise RuntimeError(f"Mongo connection failed during startup: {error_message}")
+        async with self._lock:
+            if self.client is not None and self.connected:
+                return
+
+            self.client = AsyncIOMotorClient(
+                settings.mongo_uri,
+                maxPoolSize=settings.mongo_max_pool_size,
+            )
+            self.db = self.client[settings.mongo_db_name]
+            if not await self.ping():
+                error_message = self.last_error or "Unknown Mongo connection error"
+                raise RuntimeError(f"Mongo connection failed during startup: {error_message}")
 
     async def disconnect(self) -> None:
-        if self.client is not None:
-            self.client.close()
-        self.client = None
-        self.db = None
-        self.connected = False
+        async with self._lock:
+            if self.client is not None:
+                self.client.close()
+            self.client = None
+            self.db = None
+            self.connected = False
 
     async def ping(self) -> bool:
         if self.client is None:

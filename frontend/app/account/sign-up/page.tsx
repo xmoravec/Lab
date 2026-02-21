@@ -4,13 +4,8 @@ import Link from "next/link";
 import { type FormEvent, useState } from "react";
 import { signIn } from "next-auth/react";
 
+import type { BackendRegisterResponse } from "@/lib/contracts/auth";
 import { requestAppJson } from "@/lib/app-http-client";
-
-type RegisterResponse = {
-  account: {
-    email: string;
-  };
-};
 
 export default function SignUpPage() {
   const [email, setEmail] = useState("");
@@ -25,7 +20,7 @@ export default function SignUpPage() {
     setError(null);
 
     try {
-      await requestAppJson<RegisterResponse>("/api/account/register", {
+      await requestAppJson<BackendRegisterResponse>("/api/account/register", {
         method: "POST",
         body: JSON.stringify({ email, username, password }),
       });
@@ -112,6 +107,14 @@ export default function SignUpPage() {
           <Link href="/account/sign-in" className="font-medium text-cyan-300 hover:text-cyan-200">
             Sign in
           </Link>
+        </p>
+
+        <p className="mt-3 text-xs text-zinc-500">
+          By creating an account, you agree to the
+          <Link href="/privacy" className="ml-1 font-medium text-cyan-300 hover:text-cyan-200">
+            Privacy Policy
+          </Link>
+          .
         </p>
       </section>
     </main>

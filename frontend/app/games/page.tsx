@@ -6,8 +6,7 @@ import { SectionTitle } from "@/components/section-title";
 import { fetchGamesCatalog } from "@/lib/content-api";
 
 export default async function GamesPage() {
-  const session = await auth();
-  const games = await fetchGamesCatalog();
+  const [session, games] = await Promise.all([auth(), fetchGamesCatalog()]);
   const playableGames = games.items.filter((game) => game.status.toLowerCase() === "playable");
   const upcomingGames = games.items.filter((game) => game.status.toLowerCase() !== "playable");
 
@@ -56,9 +55,9 @@ export default async function GamesPage() {
         <section className="mt-8">
           <SectionTitle title="Play Now" subtitle="Jump directly into currently playable games." />
           <div className="mt-5 grid gap-4 md:grid-cols-2">
-            {playableGames.map((game) => (
+            {playableGames.map((game, index) => (
               <div key={game.slug} id={game.slug}>
-                <GameCard game={game} featured />
+                <GameCard game={game} featured imagePriority={index === 0} />
               </div>
             ))}
           </div>

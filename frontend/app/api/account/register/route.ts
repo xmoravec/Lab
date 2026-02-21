@@ -1,4 +1,4 @@
-const backendBaseUrl = process.env.API_INTERNAL_BASE_URL ?? "http://backend:8000";
+import { proxyBackendJsonFromRequest } from "@/lib/server/backend-api";
 
 export async function POST(request: Request): Promise<Response> {
   const payload = (await request.json()) as {
@@ -7,22 +7,11 @@ export async function POST(request: Request): Promise<Response> {
     password: string;
   };
 
-  const response = await fetch(`${backendBaseUrl}/api/auth/register`, {
+  return proxyBackendJsonFromRequest({
+    request,
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-    cache: "no-store",
-  });
-
-  const rawBody = await response.text();
-  const contentType = response.headers.get("content-type") ?? "application/json";
-
-  return new Response(rawBody, {
-    status: response.status,
-    headers: {
-      "content-type": contentType,
-    },
+    path: "/api/auth/register",
+    authMode: "none",
+    body: payload,
   });
 }

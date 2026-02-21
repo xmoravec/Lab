@@ -44,7 +44,7 @@ export default function ToolsPage() {
         <SectionTitle title="Tool Catalog" subtitle="Open a tool to start solving immediately." />
 
         <div className="mt-5 grid gap-4 md:grid-cols-2">
-          {tools.map((tool) => (
+          {tools.map((tool, index) => (
             <article key={tool.slug} className="rounded-3xl border border-zinc-800 bg-zinc-900/90 p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <span className={`h-2.5 w-16 rounded-full bg-linear-to-r ${tool.accent}`} aria-hidden />
@@ -66,6 +66,8 @@ export default function ToolsPage() {
                     alt={`${tool.name} screenshot`}
                     fill
                     sizes="(min-width: 768px) 480px, 100vw"
+                    priority={index === 0}
+                    fetchPriority={index === 0 ? "high" : "auto"}
                     className="object-cover transition duration-300 hover:scale-[1.02]"
                   />
                 </div>

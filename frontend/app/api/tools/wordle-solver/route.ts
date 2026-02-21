@@ -1,4 +1,4 @@
-import { proxyBackendJson } from "@/lib/server/backend-api";
+import { proxyBackendJsonFromRequest } from "@/lib/server/backend-api";
 
 export async function POST(request: Request): Promise<Response> {
   const payload = (await request.json()) as {
@@ -11,7 +11,8 @@ export async function POST(request: Request): Promise<Response> {
     maxSuggestions?: number;
   };
 
-  return proxyBackendJson({
+  return proxyBackendJsonFromRequest({
+    request,
     method: "POST",
     path: "/api/tools/wordle_solver/solve",
     authMode: "none",
