@@ -72,7 +72,9 @@ Current implementation target is a stable local development baseline (phase 1).
 
 - Settings are centralized in `app/core/config.py` with `pydantic-settings`.
 - CORS origins support both CSV and JSON-list env formats.
+- Production/staging config validation requires explicit non-empty CORS origins and blocks wildcard (`*`) origins.
 - Mongo connection pool sizing is explicit via `MONGO_MAX_POOL_SIZE` (default `10`) to avoid exhausting Atlas M0 connections under burst traffic.
+- Response compression is enabled via FastAPI `GZipMiddleware` (env-driven defaults: enabled, minimum size `500`, compress level `5`) to reduce Railway egress cost.
 - Production-like compose requires explicit secrets (`INTERNAL_AUTH_SECRET`, `AUTH_SECRET`) instead of secret defaults.
 - Development override keeps convenience secret fallbacks for local programming workflows.
 - Internal service-to-service requests are guarded by `INTERNAL_AUTH_SECRET` for authenticated game/account endpoints.
@@ -369,7 +371,7 @@ This stack keeps operational complexity low for a personal project while remaini
 - Mongo pool protection
   - Ready: backend sets bounded pool size via `MONGO_MAX_POOL_SIZE` (default `10`).
 - Atlas network access model
-  - Needs deployment-time decision: strict Atlas allowlisting is constrained when Railway egress IP is dynamic on lower plans.
+  - Ready for first deployment with temporary broad allowlist: use `0.0.0.0/0` only with compensating controls, then tighten later.
 
 ### Technology fit summary
 
@@ -391,7 +393,8 @@ This stack keeps operational complexity low for a personal project while remaini
 
 - Atlas network hardening (required before public rollout)
   - Simple interpretation: Atlas asks you to allow only known source IPs; Railway may not always provide one stable outbound IP unless using specific paid features.
-  - M0-compatible default: use strong DB credentials and least-privilege Atlas user roles; avoid broad permanent allowlists when possible.
+  - First-deploy temporary posture: `0.0.0.0/0` is acceptable short-term for connectivity, but must be paired with strong credentials, least-privilege DB user roles, TLS, and alerting.
+  - Keep `0.0.0.0/0` explicitly temporary and schedule allowlist tightening when stable egress/private networking is available.
   - If strict network isolation is required, plan upgrade to networking features that support fixed egress/private connectivity (Atlas M10+ for peering).
 
 - WebSocket pathing and proxy behavior

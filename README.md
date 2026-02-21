@@ -25,6 +25,10 @@ Deployment-focused backend envs:
 
 - `PORT` (runtime bind port; defaults to `8000` locally)
 - `MONGO_MAX_POOL_SIZE` (defaults to `10` to protect Atlas M0 from connection spikes)
+- `CORS_ORIGINS` (set explicit production frontend domains)
+- `ENABLE_GZIP`, `GZIP_MINIMUM_SIZE_BYTES`, `GZIP_COMPRESS_LEVEL` (egress/cost control via compression)
+
+For first deployment only, temporary Atlas `0.0.0.0/0` allowlisting can be used if paired with strong DB credentials and least-privilege DB roles; tighten network access later when stable egress/private networking is available.
 
 ## Documentation
 

@@ -6,6 +6,7 @@ import logging
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
@@ -44,6 +45,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+if settings.enable_gzip:
+    app.add_middleware(
+        GZipMiddleware,
+        minimum_size=settings.gzip_minimum_size_bytes,
+        compresslevel=settings.gzip_compress_level,
+    )
 
 app.include_router(api_router, prefix=settings.api_prefix)
 
