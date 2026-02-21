@@ -5,6 +5,7 @@ from typing import TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.error_utils import raise_http_from_service_error, raise_internal_http_error
 from app.core.security import PrincipalIdentity, require_internal_request, require_principal_identity
 from app.games.chess.schemas import (
     ChessAction,
@@ -151,9 +152,14 @@ async def chess_action(
 
         raise HTTPException(status_code=400, detail="Unsupported chess action")
     except ChessServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.message) from error
+        raise_http_from_service_error(status_code=error.status_code, message=error.message, error=error)
     except HTTPException:
         raise
     except Exception as error:  # noqa: BLE001
-        logger.exception("Unhandled chess action error action=%s", payload.action)
-        raise HTTPException(status_code=500, detail="Failed to handle chess action") from error
+        raise_internal_http_error(
+            logger=logger,
+            log_message="Unhandled chess action error action=%s",
+            detail="Failed to handle chess action",
+            error=error,
+            log_args=(payload.action,),
+        )

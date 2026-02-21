@@ -2,21 +2,10 @@ import NextAuth, { type NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 
+import type { BackendAccount, BackendCredentialsVerifyResponse } from "@/lib/contracts/auth";
+
 const backendBaseUrl = process.env.API_INTERNAL_BASE_URL ?? "http://backend:8000";
 const internalAuthSecret = process.env.BACKEND_INTERNAL_AUTH_SECRET ?? "lab-internal-dev-secret";
-
-type BackendAccount = {
-  userId: string;
-  email: string;
-  username: string;
-  displayName: string;
-  avatarUrl?: string | null;
-  isAdmin: boolean;
-};
-
-type BackendCredentialsVerifyResponse = {
-  account: BackendAccount;
-};
 
 const ADMIN_SYNC_INTERVAL_MS = 60_000;
 

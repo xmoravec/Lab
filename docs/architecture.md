@@ -109,6 +109,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Backend Wordle implementation is encapsulated under `backend/app/games/wordle/`.
 - Main responsibilities are split into:
   - `service.py` for gameplay orchestration, word-bank sourcing/validation, and tile evaluation logic
+  - `word_bank.py` for cached dictionary loading, difficulty pools, and allowed-guess policy
   - `repository.py` for MongoDB persistence
 - Mongo collection `wordle_games` stores all rounds, guesses, and outcomes.
 - Each game document is scoped to a `user_id`; menu/history/start/guess are fully personalized.
@@ -127,6 +128,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 
 - Backend Chess implementation is encapsulated under `backend/app/games/chess/`.
 - `python-chess` is used as authoritative game-rules engine for legal moves, game-state transitions, check/checkmate/stalemate detection, and FEN continuity.
+- Chess bot move-search and static board-evaluation heuristics are isolated in `bot_engine.py`, while `service.py` remains responsible for orchestration, turn flow, and persistence boundaries.
 - If `python-chess` is temporarily unavailable in runtime (e.g., stale container image), Chess actions return a clear `503` service error while core app routes (including homepage/catalog) remain available.
 - Mongo collections:
   - `chess_invitations` for account-to-account invitation workflow
@@ -164,6 +166,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 
 - App Router structure under `frontend/app/`
 - Typed API clients under `frontend/lib/`
+- Shared frontend auth contract types are centralized in `frontend/lib/contracts/auth.ts` to reduce duplicated account payload definitions across auth/session and account onboarding flows.
 - Home page features a hero, spotlight game, and scalable experiment sections using backend-sourced content.
 - Home page spotlight is presented as a horizontal carousel that rotates through available playable games and live tools with screenshot-led cards.
 - A global footer is rendered from root layout across the app, with prominent author attribution (`xmoravec`), personal website reference (`www.xmoravec.com`), and planned deployment domain (`lab.xmoravec.com`).

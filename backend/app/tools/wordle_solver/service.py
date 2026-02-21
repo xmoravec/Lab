@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from collections import Counter
 
-from app.games.wordle.service import get_word_bank_context, get_words_for_difficulty
+from app.games.wordle.word_bank import get_word_bank_context, get_words_for_difficulty
 from app.tools.wordle_solver.schemas import (
     WordleSolverRequest,
     WordleSolverResponse,

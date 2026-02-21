@@ -4,6 +4,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.error_utils import raise_http_from_service_error, raise_internal_http_error
 from app.core.security import PrincipalIdentity, require_internal_request, require_principal_identity
 from app.games.wordle.schemas import (
     GuessWordleRequest,
@@ -56,10 +57,14 @@ async def get_wordle_menu(identity: PrincipalIdentity = Depends(_wordle_identity
     try:
         return await wordle_service.get_menu(user_id=identity.principal_id)
     except WordleServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.message) from error
+        raise_http_from_service_error(status_code=error.status_code, message=error.message, error=error)
     except Exception as error:  # noqa: BLE001
-        logger.exception("Unhandled wordle menu error")
-        raise HTTPException(status_code=500, detail="Failed to load Wordle menu") from error
+        raise_internal_http_error(
+            logger=logger,
+            log_message="Unhandled wordle menu error",
+            detail="Failed to load Wordle menu",
+            error=error,
+        )
 
 
 @router.post("/start", response_model=StartWordleResponse)
@@ -70,10 +75,15 @@ async def start_wordle_game(
     try:
         return await wordle_service.start_game(identity.principal_id, payload)
     except WordleServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.message) from error
+        raise_http_from_service_error(status_code=error.status_code, message=error.message, error=error)
     except Exception as error:  # noqa: BLE001
-        logger.exception("Unhandled wordle start error difficulty=%s", payload.difficulty.value)
-        raise HTTPException(status_code=500, detail="Failed to start Wordle game") from error
+        raise_internal_http_error(
+            logger=logger,
+            log_message="Unhandled wordle start error difficulty=%s",
+            detail="Failed to start Wordle game",
+            error=error,
+            log_args=(payload.difficulty.value,),
+        )
 
 
 @router.post("/guess", response_model=GuessWordleResponse)
@@ -84,14 +94,15 @@ async def submit_wordle_guess(
     try:
         return await wordle_service.submit_guess(identity.principal_id, payload)
     except WordleServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.message) from error
+        raise_http_from_service_error(status_code=error.status_code, message=error.message, error=error)
     except Exception as error:  # noqa: BLE001
-        logger.exception(
-            "Unhandled wordle guess error game_id=%s guess=%s",
-            payload.game_id,
-            payload.guess,
+        raise_internal_http_error(
+            logger=logger,
+            log_message="Unhandled wordle guess error game_id=%s guess=%s",
+            detail="Unexpected error while evaluating guess",
+            error=error,
+            log_args=(payload.game_id, payload.guess),
         )
-        raise HTTPException(status_code=500, detail="Unexpected error while evaluating guess") from error
 
 
 @router.post("/hint", response_model=WordleHintResponse)
@@ -102,10 +113,15 @@ async def request_wordle_hint_endpoint(
     try:
         return await request_wordle_hint(identity.principal_id, payload)
     except WordleServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.message) from error
+        raise_http_from_service_error(status_code=error.status_code, message=error.message, error=error)
     except Exception as error:  # noqa: BLE001
-        logger.exception("Unhandled wordle hint error game_id=%s", payload.game_id)
-        raise HTTPException(status_code=500, detail="Failed to get Wordle hint") from error
+        raise_internal_http_error(
+            logger=logger,
+            log_message="Unhandled wordle hint error game_id=%s",
+            detail="Failed to get Wordle hint",
+            error=error,
+            log_args=(payload.game_id,),
+        )
 
 
 @router.post("/reveal-answer", response_model=WordleRevealAnswerResponse)
@@ -116,7 +132,12 @@ async def reveal_wordle_answer_endpoint(
     try:
         return await reveal_wordle_answer(identity.principal_id, payload)
     except WordleServiceError as error:
-        raise HTTPException(status_code=error.status_code, detail=error.message) from error
+        raise_http_from_service_error(status_code=error.status_code, message=error.message, error=error)
     except Exception as error:  # noqa: BLE001
-        logger.exception("Unhandled wordle reveal error game_id=%s", payload.game_id)
-        raise HTTPException(status_code=500, detail="Failed to reveal Wordle answer") from error
+        raise_internal_http_error(
+            logger=logger,
+            log_message="Unhandled wordle reveal error game_id=%s",
+            detail="Failed to reveal Wordle answer",
+            error=error,
+            log_args=(payload.game_id,),
+        )
