@@ -1,4 +1,5 @@
 import { proxyBackendJson } from "@/lib/server/backend-api";
+import { getOrCreateGuestId } from "@/lib/server/guest-session";
 
 export async function POST(request: Request): Promise<Response> {
   const payload = (await request.json()) as {
@@ -15,10 +16,13 @@ export async function POST(request: Request): Promise<Response> {
     promotion?: "q" | "r" | "b" | "n";
   };
 
+  const guestId = await getOrCreateGuestId();
+
   return proxyBackendJson({
     method: "POST",
     path: "/api/games/chess",
-    authMode: "required",
+    authMode: "optional",
+    guestId,
     body: payload,
   });
 }

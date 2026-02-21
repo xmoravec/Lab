@@ -14,10 +14,13 @@ import {
   type WordleGameState,
 } from "@/app/games/wordle/lib/api";
 import { ApiRequestError } from "@/lib/http-client";
+import { loadSoundEnabled, saveSoundEnabled, unlockAudioContext } from "@/lib/sound/audio";
+import { playWordleSound } from "@/lib/sound/game-sounds";
 
 import styles from "./wordle.module.css";
 
 const KEYBOARD_ROWS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+const WORDLE_SOUND_SETTING_KEY = "lab:wordle:sounds";
 
 type KeyboardLegend = Record<string, TileState>;
 type BoardWidthMode = "classic" | "auto";
@@ -127,8 +130,22 @@ export default function WordlePage() {
   const [viewMode, setViewMode] = useState<WordleViewMode>("menu");
   const [notice, setNotice] = useState("Choose a difficulty and hit Play.");
   const [wordBankNotice, setWordBankNotice] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [shakeTick, setShakeTick] = useState(0);
   const [keyPulse, setKeyPulse] = useState("");
+
+  useEffect(() => {
+    setSoundEnabled(loadSoundEnabled(WORDLE_SOUND_SETTING_KEY));
+  }, []);
+
+  const setSoundPreference = useCallback((enabled: boolean) => {
+    setSoundEnabled(enabled);
+    saveSoundEnabled(WORDLE_SOUND_SETTING_KEY, enabled);
+    if (enabled) {
+      void unlockAudioContext();
+      playWordleSound("start", true);
+    }
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -250,6 +267,7 @@ export default function WordlePage() {
       setWordBankNotice(started.game.wordBankNotice ?? null);
       setCurrentGuess("");
       setNotice(started.resumedExisting ? "Resumed existing game." : "New game started.");
+      playWordleSound("start", soundEnabled);
       await refreshHistory();
     } catch (error) {
       console.error("Failed to start Wordle game", {
@@ -272,6 +290,7 @@ export default function WordlePage() {
     if (currentGuess.length !== wordLength) {
       setNotice(`Guess must be ${wordLength} letters.`);
       setShakeTick((value) => value + 1);
+      playWordleSound("invalid", soundEnabled);
       return;
     }
 
@@ -288,15 +307,19 @@ export default function WordlePage() {
           setNotice(response.message);
         }
         setShakeTick((value) => value + 1);
+        playWordleSound("invalid", soundEnabled);
         return;
       }
 
       setCurrentGuess("");
+      playWordleSound("submit", soundEnabled);
 
       if (response.game.status === "won") {
         setNotice("Huge win. You cracked it.");
+        playWordleSound("win", soundEnabled);
       } else if (response.game.status === "lost") {
         setNotice(`Round over. Answer: ${response.game.answer?.toUpperCase() ?? "unknown"}.`);
+        playWordleSound("lose", soundEnabled);
       } else {
         setNotice(response.message);
       }
@@ -322,10 +345,11 @@ export default function WordlePage() {
       }
 
       setShakeTick((value) => value + 1);
+      playWordleSound("invalid", soundEnabled);
     } finally {
       setIsSubmitting(false);
     }
-  }, [currentGame, currentGuess, isSubmitting, refreshHistory, viewMode, wordLength]);
+  }, [currentGame, currentGuess, isSubmitting, refreshHistory, soundEnabled, viewMode, wordLength]);
 
   const pushKey = useCallback((key: string) => {
     if (viewMode !== "game" || !currentGame || currentGame.status !== "in-progress") {
@@ -336,10 +360,12 @@ export default function WordlePage() {
 
     if (normalized === "BACKSPACE") {
       setCurrentGuess((previous) => previous.slice(0, -1));
+      playWordleSound("delete", soundEnabled);
       return;
     }
 
     if (normalized === "ENTER") {
+      playWordleSound("submit", soundEnabled);
       void submitGuess();
       return;
     }
@@ -355,9 +381,10 @@ export default function WordlePage() {
 
       return `${previous}${normalized}`;
     });
+    playWordleSound("key", soundEnabled);
     setKeyPulse(normalized);
     setTimeout(() => setKeyPulse(""), 140);
-  }, [currentGame, submitGuess, viewMode, wordLength]);
+  }, [currentGame, soundEnabled, submitGuess, viewMode, wordLength]);
 
   const handleHint = useCallback(async () => {
     if (!currentGame || currentGame.status !== "in-progress" || isHinting) {
@@ -369,6 +396,7 @@ export default function WordlePage() {
       const response = await requestWordleHint(currentGame.gameId);
       setCurrentGame(response.game);
       setNotice(response.message);
+      playWordleSound(response.accepted ? "hint" : "invalid", soundEnabled);
       setWordBankNotice(response.game.wordBankNotice ?? null);
       await refreshHistory();
     } catch (error) {
@@ -377,7 +405,7 @@ export default function WordlePage() {
     } finally {
       setIsHinting(false);
     }
-  }, [currentGame, isHinting, refreshHistory]);
+  }, [currentGame, isHinting, refreshHistory, soundEnabled]);
 
   const handleAdminReveal = useCallback(async () => {
     if (!currentGame || !isAdmin || !adminModeEnabled || isRevealing) {
@@ -389,6 +417,7 @@ export default function WordlePage() {
       const response = await revealWordleAnswer(currentGame.gameId);
       setCurrentGame(response.game);
       setNotice(response.message);
+      playWordleSound("hint", soundEnabled);
       setWordBankNotice(response.game.wordBankNotice ?? null);
       await refreshHistory();
     } catch (error) {
@@ -397,7 +426,7 @@ export default function WordlePage() {
     } finally {
       setIsRevealing(false);
     }
-  }, [adminModeEnabled, currentGame, isAdmin, isRevealing, refreshHistory]);
+  }, [adminModeEnabled, currentGame, isAdmin, isRevealing, refreshHistory, soundEnabled]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -546,6 +575,35 @@ export default function WordlePage() {
                     }`}
                   >
                     Auto
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-zinc-800/90 bg-zinc-900/70 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">Sound</p>
+                <p className="mt-1 text-xs text-zinc-500">Subtle tones for typing, outcomes, and hint actions.</p>
+                <div className="mt-2 inline-flex rounded-lg border border-zinc-700 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setSoundPreference(true)}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                      soundEnabled
+                        ? "bg-zinc-700 text-zinc-100"
+                        : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    }`}
+                  >
+                    On
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSoundPreference(false)}
+                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                      !soundEnabled
+                        ? "bg-zinc-700 text-zinc-100"
+                        : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                    }`}
+                  >
+                    Off
                   </button>
                 </div>
               </div>

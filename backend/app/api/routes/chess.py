@@ -33,9 +33,12 @@ async def _chess_identity_dependency(
     _: None = Depends(require_internal_request),
     identity: PrincipalIdentity = Depends(require_principal_identity),
 ) -> PrincipalIdentity:
-    if identity.is_guest:
-        raise HTTPException(status_code=401, detail="Authentication required")
     return identity
+
+
+def _require_registered_identity(identity: PrincipalIdentity) -> None:
+    if identity.is_guest:
+        raise HTTPException(status_code=401, detail="Sign in required for multiplayer")
 
 
 @router.post("", response_model=ChessActionResponse)
@@ -51,6 +54,7 @@ async def chess_action(
             return ChessActionResponse(action=action, menu=menu)
 
         if action == ChessAction.SEND_INVITATION:
+            _require_registered_identity(identity)
             invitation = await chess_service.send_invitation(
                 from_user_id=identity.principal_id,
                 from_username=identity.username or "player",
@@ -62,6 +66,7 @@ async def chess_action(
             return ChessActionResponse(action=action, invitation=invitation, menu=menu)
 
         if action == ChessAction.RESPOND_INVITATION:
+            _require_registered_identity(identity)
             response = await chess_service.respond_to_invitation(
                 user_id=identity.principal_id,
                 invitation_id=_require_value(payload.invitation_id, field_name="invitationId"),

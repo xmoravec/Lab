@@ -139,6 +139,7 @@ This gives a deterministic “ready” signal and a reusable function for future
   - `multiplayer` (invitation-based account matches)
   - `self-play` (same account controls both colors)
   - `bot` (single-player against a basic built-in heuristic bot)
+- Guest identities can access Chess `self-play` and `bot` modes; invitation-driven multiplayer remains sign-in required.
 - Bot difficulty is selectable from UI as `easy`, `medium` (default), or `hard` and is persisted per bot match.
 - Current bot move policy combines tactical checks (mate-in-1 detection) with depth-based search:
   - `easy`: depth-1 capture-priority heuristic with random tie-break
@@ -179,20 +180,24 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Wordle Solver tool UI is served at `/tools/wordle_solver` with multi-row green/yellow/gray clue inputs, ranked suggestions, and candidate previews.
 - Dev Log page has been removed from the product navigation and route surface.
 - Wordle UI is encapsulated under `frontend/app/games/wordle/` and now consumes authenticated Next.js proxy routes.
+- Wordle gameplay now includes lightweight synthesized audio cues (Web Audio API) for keypress, submit, invalid input, hint, and win/loss outcomes, with a per-game menu toggle persisted in localStorage.
 - Wordle now opens in a menu-first flow (including when an active game exists) and requires explicit Resume/Play action before entering the board view.
 - Admin reveal controls in Wordle are visible only while admin mode is currently enabled (live-synced from server cookie state), preventing stale visibility after admin mode is switched off.
-- Chess UI is encapsulated under `frontend/app/games/chess/` and consumes one authenticated Next.js proxy route at `frontend/app/api/chess/route.ts`.
+- Chess UI is encapsulated under `frontend/app/games/chess/` and consumes one Next.js proxy route at `frontend/app/api/chess/route.ts` with optional auth (guest-enabled self-play/bot, account-required multiplayer).
+- Chess gameplay now includes subtle event SFX with small local WAV assets under `frontend/public/assets/sounds/chess/` (select, move, capture, check, castle, illegal, game-end), plus a per-game menu toggle persisted in localStorage.
 - Chess page now opens to a menu-first flow (mode/time-control selection and invitations) and transitions to a dominant board view after explicit Play/open-match action.
 - Chess board rendering uses generated SVG piece assets under `frontend/public/assets/chess/pieces/` for higher-fidelity visuals.
 - Player bars display captured-piece icons per color and show a material-lead `+N` indicator on the side currently ahead in material.
 - In-game board view defaults to an extra-large layout and provides a compact size toggle in the game header.
 - Piece-selection UX supports direct own-piece reselection: clicking another of your pieces while one is selected switches selection instead of surfacing an illegal-move warning.
+- Castling keeps standard king-to-target-square movement and also supports a king-to-rook shortcut gesture (drop/click king onto own rook square) that resolves to legal castling squares.
 - Board squares subtly indicate the previous move (source and destination) for quick turn-context awareness.
 - Wordle pre-game menu exposes a subtle board-width mode control (`Classic (5)` default, `Auto` lab mode) while keeping 5-letter gameplay as the primary experience.
 
 ### Authenticated proxy routing
 
 - Frontend route handlers under `frontend/app/api/wordle/*` proxy to backend.
+- Frontend Chess proxy route (`frontend/app/api/chess/route.ts`) also supports guest identity forwarding for guest-eligible actions.
 - Proxy layer injects internal shared-secret and authenticated user headers from server-side session.
 - For guest gameplay, proxy routes inject a generated guest session header (`x-guest-id`) bound to a browser-session cookie.
 - Backend identity dependencies normalize and reject blank/whitespace-only identity headers to avoid ambiguous principal resolution.
