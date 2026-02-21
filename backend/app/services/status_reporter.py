@@ -78,13 +78,12 @@ async def report_status() -> dict[str, Any]:
     }
 
     pretty_payload = json.dumps(payload, indent=2, sort_keys=True, default=str)
-    separator = "=" * 92
     logger.info(
-        "\n%s\nAPP READY: %s\n%s\n%s\n%s",
-        separator,
+        "APP READY name=%s mongo_connected=%s frontend_reachable=%s env=%s",
         settings.app_name,
-        pretty_payload,
-        separator,
-        "",
+        mongo_is_connected,
+        bool(frontend_status.get("reachable", False)),
+        settings.app_env,
     )
+    logger.debug("APP READY payload=%s", pretty_payload)
     return payload

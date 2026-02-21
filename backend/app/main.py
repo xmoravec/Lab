@@ -16,6 +16,7 @@ from app.games.wordle.repository import wordle_repository
 from app.services.auth_service import auth_service
 from app.services.catalog_service import ensure_catalog_seed_data
 from app.services.status_reporter import report_status
+from app.services.system_service import get_health_payload
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -66,14 +67,6 @@ async def http_exception_handler(request: Request, error: HTTPException) -> JSON
             request.url.path,
             error.detail,
         )
-    else:
-        logger.warning(
-            "HTTP rejection status=%s method=%s path=%s detail=%s",
-            error.status_code,
-            request.method,
-            request.url.path,
-            error.detail,
-        )
 
     return JSONResponse(
         status_code=error.status_code,
@@ -84,3 +77,8 @@ async def http_exception_handler(request: Request, error: HTTPException) -> JSON
 @app.get("/")
 def root() -> dict[str, str]:
     return {"message": "Lab backend is running"}
+
+
+@app.get("/health")
+def root_health() -> dict[str, object]:
+    return get_health_payload().model_dump(by_alias=True)

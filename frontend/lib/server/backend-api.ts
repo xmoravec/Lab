@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { cookies } from "next/headers";
+import { getOrCreateGuestId } from "@/lib/server/guest-session";
 
 const backendBaseUrl = process.env.API_INTERNAL_BASE_URL ?? "http://backend:8000";
 const internalAuthSecret = process.env.BACKEND_INTERNAL_AUTH_SECRET ?? "lab-internal-dev-secret";
@@ -13,7 +14,7 @@ if (
   throw new Error("BACKEND_INTERNAL_AUTH_SECRET must be set to a non-default value in production");
 }
 
-type ProxyOptions = {
+export type ProxyOptions = {
   method: "GET" | "POST";
   path: string;
   body?: unknown;
@@ -22,6 +23,33 @@ type ProxyOptions = {
   forwardedFor?: string;
   realIp?: string;
 };
+
+type ProxyFromRequestOptions = Omit<ProxyOptions, "forwardedFor" | "realIp" | "guestId"> & {
+  request: Request;
+  includeGuestId?: boolean;
+};
+
+function resolveForwardingHeaders(request: Request): Pick<ProxyOptions, "forwardedFor" | "realIp"> {
+  return {
+    forwardedFor: request.headers.get("x-forwarded-for") ?? undefined,
+    realIp: request.headers.get("x-real-ip") ?? undefined,
+  };
+}
+
+export async function proxyBackendJsonFromRequest(options: ProxyFromRequestOptions): Promise<Response> {
+  const forwardingHeaders = resolveForwardingHeaders(options.request);
+  const guestId = options.includeGuestId ? await getOrCreateGuestId() : undefined;
+
+  return proxyBackendJson({
+    method: options.method,
+    path: options.path,
+    body: options.body,
+    authMode: options.authMode,
+    forwardedFor: forwardingHeaders.forwardedFor,
+    realIp: forwardingHeaders.realIp,
+    guestId,
+  });
+}
 
 export async function proxyBackendJson(options: ProxyOptions): Promise<Response> {
   const session = await auth();

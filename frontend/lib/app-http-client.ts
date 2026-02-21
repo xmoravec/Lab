@@ -1,5 +1,6 @@
 import { parseApiError } from "@/lib/api-error";
 import { ApiRequestError } from "@/lib/http-client";
+import { logClientError } from "@/lib/client-log";
 
 export async function requestAppJson<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? "GET";
@@ -15,11 +16,15 @@ export async function requestAppJson<T>(path: string, init?: RequestInit): Promi
       cache: "no-store",
     });
   } catch (error) {
-    console.error("App API network request failed", {
-      path,
-      method,
-      error,
-    });
+    logClientError(
+      "App API network request failed",
+      {
+        path,
+        method,
+        error,
+      },
+      { allowInProduction: true },
+    );
     throw error;
   }
 

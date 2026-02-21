@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from collections import deque
 from dataclasses import dataclass
 from threading import Lock
@@ -165,7 +166,12 @@ class InMemoryRateLimiter:
 rate_limiter = InMemoryRateLimiter()
 
 
-def build_rate_limiter(*, bucket: str, limit: int, window_seconds: int):
+def build_rate_limiter(
+    *,
+    bucket: str,
+    limit: int,
+    window_seconds: int,
+) -> Callable[[Request, Response], Awaitable[None]]:
     config = _RateLimitConfig(bucket=bucket, limit=limit, window_seconds=window_seconds)
 
     async def _dependency(request: Request, response: Response) -> None:

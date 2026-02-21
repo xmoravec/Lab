@@ -1,4 +1,4 @@
-import { proxyBackendJson } from "@/lib/server/backend-api";
+import { proxyBackendJsonFromRequest } from "@/lib/server/backend-api";
 
 export async function POST(request: Request): Promise<Response> {
   const payload = (await request.json()) as {
@@ -7,12 +7,11 @@ export async function POST(request: Request): Promise<Response> {
     password: string;
   };
 
-  return proxyBackendJson({
+  return proxyBackendJsonFromRequest({
+    request,
     method: "POST",
     path: "/api/auth/register",
     authMode: "none",
-    forwardedFor: request.headers.get("x-forwarded-for") ?? undefined,
-    realIp: request.headers.get("x-real-ip") ?? undefined,
     body: payload,
   });
 }

@@ -24,10 +24,12 @@ Current implementation target is a stable local development baseline (phase 1).
 ### Containers
 
 1. `frontend`
-   - Runs `next dev` with host binding for Docker
-   - Uses polling-friendly file watch env for reliable autoreload in mounted volumes
+  - Base compose runs `next start` from a production build target
+  - Development override runs `next dev` with polling-friendly file watch env
 2. `backend`
-   - Runs `uvicorn` with reload mode
+  - Base compose runs `uvicorn` without reload
+  - Development override runs `uvicorn` with reload mode
+  - Runtime port is configurable via `PORT` (`8000` default for local compose; platform-provided in Railway)
    - Connects to Mongo during lifespan startup
    - Emits one startup-ready status report
 3. `mongo`
@@ -37,7 +39,10 @@ Current implementation target is a stable local development baseline (phase 1).
 ### Compose entrypoint
 
 - Compose file: `docker/docker-compose.yml`
-- Standard command: `docker compose -f docker/docker-compose.yml up --build`
+- Production-like local run: `docker compose -f docker/docker-compose.yml up --build`
+- Development hot-reload run: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build`
+- Base compose is production-oriented and does not include source bind mounts.
+- Development override adds source bind mounts and development image targets.
 
 ### Network model
 
@@ -67,7 +72,9 @@ Current implementation target is a stable local development baseline (phase 1).
 
 - Settings are centralized in `app/core/config.py` with `pydantic-settings`.
 - CORS origins support both CSV and JSON-list env formats.
-- Environment defaults favor local Docker development while remaining deployment-safe.
+- Mongo connection pool sizing is explicit via `MONGO_MAX_POOL_SIZE` (default `10`) to avoid exhausting Atlas M0 connections under burst traffic.
+- Production-like compose requires explicit secrets (`INTERNAL_AUTH_SECRET`, `AUTH_SECRET`) instead of secret defaults.
+- Development override keeps convenience secret fallbacks for local programming workflows.
 - Internal service-to-service requests are guarded by `INTERNAL_AUTH_SECRET` for authenticated game/account endpoints.
 
 ### Auth model
@@ -81,6 +88,7 @@ Current implementation target is a stable local development baseline (phase 1).
 ### Mongo lifecycle
 
 - Startup: create client, select DB, ping
+- Startup connection reuses a singleton app-level Mongo manager and does not recreate clients per request.
 - Startup is fail-fast: if ping fails, API startup exits with an explicit error
 - Shutdown: close client cleanly
 - Connection state is tracked and exposed through health/ping behavior
@@ -89,12 +97,13 @@ Current implementation target is a stable local development baseline (phase 1).
 
 - `report_status` in `app/services/status_reporter.py`
 - Runs once on startup after Mongo connection attempt
-- Logs structured payload with:
+- Logs a concise startup summary with:
   - app identity and Python version
   - key module versions
   - Mongo connectivity details
   - frontend probe result
   - active CORS policy snapshot
+- Full structured payload remains available at debug log level.
 
 This gives a deterministic “ready” signal and a reusable function for future diagnostics.
 
@@ -347,6 +356,21 @@ This gives a deterministic “ready” signal and a reusable function for future
 
 This stack keeps operational complexity low for a personal project while remaining suitable for low-to-medium early traffic.
 
+### Deployment readiness snapshot
+
+- Frontend-to-backend URL env wiring
+  - Ready: frontend resolves backend URLs from environment (`NEXT_PUBLIC_API_BASE_URL`, `API_INTERNAL_BASE_URL`).
+- Backend health checks
+  - Ready: both `/api/health` and top-level `/health` endpoints are available.
+- Railway runtime port compatibility
+  - Ready: backend container binds to `${PORT}` (with local fallback to `8000`).
+- Mongo client reuse
+  - Ready: backend uses one singleton Mongo manager and reuses the same Motor client.
+- Mongo pool protection
+  - Ready: backend sets bounded pool size via `MONGO_MAX_POOL_SIZE` (default `10`).
+- Atlas network access model
+  - Needs deployment-time decision: strict Atlas allowlisting is constrained when Railway egress IP is dynamic on lower plans.
+
 ### Technology fit summary
 
 - Vercel
@@ -365,11 +389,16 @@ This stack keeps operational complexity low for a personal project while remaini
 
 ### Pre/post-deployment considerations (in scope)
 
+- Atlas network hardening (required before public rollout)
+  - Simple interpretation: Atlas asks you to allow only known source IPs; Railway may not always provide one stable outbound IP unless using specific paid features.
+  - M0-compatible default: use strong DB credentials and least-privilege Atlas user roles; avoid broad permanent allowlists when possible.
+  - If strict network isolation is required, plan upgrade to networking features that support fixed egress/private connectivity (Atlas M10+ for peering).
+
 - WebSocket pathing and proxy behavior
   - Near-future real-time features should reserve a stable API pathing strategy (for example, dedicated realtime endpoint/subpath) and verify proxy compatibility end-to-end (Cloudflare edge, domain routing, Railway ingress, backend ASGI handling).
   - Validate idle timeout behavior and reconnect strategy before enabling production realtime flows.
 - Rate limiting (required before public rollout)
-  - Add app-level rate limiting for auth and gameplay mutation endpoints to reduce abuse risk and protect free-tier resources.
+  - App-level rate limiting is already in place for auth/gameplay/system endpoints; continue tuning limits against real traffic.
   - Keep edge-level controls in Cloudflare as a first layer, with backend enforcement as source of truth.
 - Cost guardrails (required)
   - Enable provider budget alerts and spending notifications across Vercel, Railway, and Atlas.

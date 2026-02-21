@@ -14,6 +14,7 @@ import {
   type WordleGameState,
 } from "@/app/games/wordle/lib/api";
 import { ApiRequestError } from "@/lib/http-client";
+import { logClientWarn } from "@/lib/client-log";
 import { loadSoundEnabled, saveSoundEnabled, unlockAudioContext } from "@/lib/sound/audio";
 import { playWordleSound } from "@/lib/sound/game-sounds";
 
@@ -213,11 +214,7 @@ export default function WordlePage() {
         } else {
           setNotice("Choose a difficulty and hit Play.");
         }
-      } catch (error) {
-        console.error("Failed to bootstrap Wordle menu", {
-          location: "WordlePage.bootstrap",
-          error,
-        });
+      } catch {
         if (!disposed) {
           setNotice("Could not load Wordle menu right now.");
         }
@@ -251,7 +248,7 @@ export default function WordlePage() {
         setCurrentGame(menu.activeGame);
       }
     } catch (error) {
-      console.warn("Failed to refresh Wordle history", {
+      logClientWarn("Failed to refresh Wordle history", {
         location: "WordlePage.refreshHistory",
         error,
       });
@@ -269,13 +266,7 @@ export default function WordlePage() {
       setNotice(started.resumedExisting ? "Resumed existing game." : "New game started.");
       playWordleSound("start", soundEnabled);
       await refreshHistory();
-    } catch (error) {
-      console.error("Failed to start Wordle game", {
-        location: "WordlePage.handleStart",
-        difficulty,
-        forceNew,
-        error,
-      });
+    } catch {
       setNotice("Unable to start game right now.");
     } finally {
       setIsLoading(false);
@@ -335,12 +326,6 @@ export default function WordlePage() {
           setNotice(message);
         }
       } else {
-        console.error("Failed to submit Wordle guess", {
-          location: "WordlePage.submitGuess",
-          gameId: currentGame.gameId,
-          guess: currentGuess,
-          error,
-        });
         setNotice(message);
       }
 

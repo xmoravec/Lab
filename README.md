@@ -13,10 +13,18 @@ Current status: a runnable local baseline is implemented with secure account aut
 ## Quick start
 
 1. Create `.env` from `.env.example`
-2. Run `docker compose -f docker/docker-compose.yml up --build`
-3. Open:
+2. Set required secrets in `.env` (`INTERNAL_AUTH_SECRET`, `AUTH_SECRET`)
+3. Run production-like stack: `docker compose -f docker/docker-compose.yml up --build`
+4. For development hot-reload mode, use override: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build`
+5. Open:
    - Frontend: `http://localhost:3000`
    - Backend docs: `http://localhost:8000/docs`
+   - Backend health: `http://localhost:8000/health`
+
+Deployment-focused backend envs:
+
+- `PORT` (runtime bind port; defaults to `8000` locally)
+- `MONGO_MAX_POOL_SIZE` (defaults to `10` to protect Atlas M0 from connection spikes)
 
 ## Documentation
 

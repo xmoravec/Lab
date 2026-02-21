@@ -66,12 +66,6 @@ def _rejected_guess_response(
     message: str,
     guess: str,
 ) -> GuessWordleResponse:
-    logger.warning(
-        "Wordle guess rejected game_id=%s guess=%s reason=%s",
-        game_document["game_id"],
-        guess,
-        message,
-    )
     return GuessWordleResponse(
         accepted=False,
         message=message,
@@ -86,13 +80,6 @@ def _raise_service_error(
     game_id: str | None = None,
     guess: str | None = None,
 ) -> NoReturn:
-    logger.warning(
-        "Wordle validation error status=%s message=%s game_id=%s guess=%s",
-        status_code,
-        message,
-        game_id,
-        guess,
-    )
     raise WordleServiceError(status_code=status_code, message=message)
 
 

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     mongo_uri: str = "mongodb://mongo:27017/lab"
     mongo_db_name: str = "lab"
+    mongo_max_pool_size: int = 10
     frontend_probe_url: str = "http://frontend:3000"
     frontend_probe_timeout_seconds: float = 1.5
     internal_auth_secret: str = "lab-internal-dev-secret"
@@ -64,6 +65,8 @@ class Settings(BaseSettings):
     def validate_production_secrets(self) -> "Settings":
         if self.is_production_like and self.internal_auth_secret == "lab-internal-dev-secret":
             raise ValueError("INTERNAL_AUTH_SECRET must be set to a non-default value in production/staging")
+        if self.mongo_max_pool_size < 1:
+            raise ValueError("MONGO_MAX_POOL_SIZE must be at least 1")
         return self
 
 
