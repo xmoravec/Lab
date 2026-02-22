@@ -10,7 +10,7 @@ The Playground (Lab) is a Docker-first monorepo for browser game experiments wit
 - Authentication: NextAuth (credentials + Google OAuth) with backend account source of truth
 - Orchestration: Docker Compose
 
-Current implementation target is a stable local development baseline (phase 1).
+Current implementation target is a stable production baseline (v1.0.0).
 
 ## Repository layout
 
@@ -153,7 +153,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Mongo collections:
   - `chess_invitations` for account-to-account invitation workflow
   - `chess_matches` for persisted match state, move history, and outcome metadata
-- Multiplayer is implemented as async turn-based flow (DB-backed state; no WebSocket requirement in phase 1).
+- Multiplayer is implemented as async turn-based flow (DB-backed state; no WebSocket requirement in the current release).
 - Invitation policy allows self-invitations only for admin accounts.
 - Match modes currently supported:
   - `multiplayer` (invitation-based account matches)
@@ -191,7 +191,7 @@ This gives a deterministic “ready” signal and a reusable function for future
 - Home page features a hero, spotlight game, and scalable experiment sections using backend-sourced content.
 - Home page spotlight is presented as a horizontal carousel that rotates through available playable games and live tools with screenshot-led cards.
 - Above-the-fold screenshot assets on Home/Games/Tools use Next Image high-priority loading for first-visible cards/slides, and spotlight now renders only the active slide image to reduce initial image work and improve LCP.
-- A global footer is rendered from root layout across the app, with prominent author attribution (`xmoravec`), personal website reference (`www.xmoravec.com`), and planned deployment domain (`lab.xmoravec.com`).
+- A global footer is rendered from root layout across the app, with prominent author attribution (`xmoravec`), personal website reference (`www.xmoravec.com`), and live domain (`lab.xmoravec.com`).
 - Footer includes a persistent Privacy Policy link.
 - Games page provides a richer catalog view with playable-first grouping and summary stats.
 - Shared game cards expose clickable game titles and a prominent playable CTA for fast entry into active games.
@@ -350,63 +350,10 @@ This gives a deterministic “ready” signal and a reusable function for future
 3. Expand multi-game frontend modules and shared game shell patterns
 4. Add richer account profile settings, avatar management, and friend systems
 
-## Planned deployment
+## Deployment
 
-### Target stack (current plan)
-
-- Frontend: Vercel (Next.js production hosting)
-- Backend: Railway (Dockerized FastAPI service)
-- Database: MongoDB Atlas M0 (free/shared cluster tier)
-- Edge/DNS: Cloudflare (DNS, TLS proxying, and edge security controls)
-
-This stack keeps operational complexity low for a personal project while remaining suitable for low-to-medium early traffic.
-
-### Deployment readiness snapshot
-
-- Frontend-to-backend URL env wiring
-  - Ready: frontend resolves backend URLs from environment (`NEXT_PUBLIC_API_BASE_URL`, `API_INTERNAL_BASE_URL`).
-- Backend health checks
-  - Ready: both `/api/health` and top-level `/health` endpoints are available.
-- Railway runtime port compatibility
-  - Ready: backend container binds to `${PORT}` (with local fallback to `8000`).
-- Mongo client reuse
-  - Ready: backend uses one singleton Mongo manager and reuses the same Motor client.
-- Mongo pool protection
-  - Ready: backend sets bounded pool size via `MONGO_MAX_POOL_SIZE` (default `10`).
-- Atlas network access model
-  - Ready for first deployment with temporary broad allowlist: use `0.0.0.0/0` only with compensating controls, then tighten later.
-
-### Technology fit summary
-
-- Vercel
-  - Natural fit for App Router + NextAuth workflows.
-  - Minimal ops burden for frontend deployments and environment management.
-  - Vercel Analytics is integrated in consent-gated mode (optional analytics only after opt-in).
-- Railway
-  - Supports long-running containerized Python services and straightforward Docker deploys.
-  - Good balance of simplicity and capability without self-managing a VM.
-- Atlas M0
-  - Viable launch-tier option for early usage and cost minimization.
-  - Should be treated as an entry tier with eventual upgrade path if usage grows.
-- Cloudflare
-  - Complements Vercel/Railway with domain management and protective edge controls.
-  - Useful location for coarse traffic filtering before requests reach app infrastructure.
-
-### Pre/post-deployment considerations (in scope)
-
-- Atlas network hardening (required before public rollout)
-  - Simple interpretation: Atlas asks you to allow only known source IPs; Railway may not always provide one stable outbound IP unless using specific paid features.
-  - First-deploy temporary posture: `0.0.0.0/0` is acceptable short-term for connectivity, but must be paired with strong credentials, least-privilege DB user roles, TLS, and alerting.
-  - Keep `0.0.0.0/0` explicitly temporary and schedule allowlist tightening when stable egress/private networking is available.
-  - If strict network isolation is required, plan upgrade to networking features that support fixed egress/private connectivity (Atlas M10+ for peering).
-
-- WebSocket pathing and proxy behavior
-  - Near-future real-time features should reserve a stable API pathing strategy (for example, dedicated realtime endpoint/subpath) and verify proxy compatibility end-to-end (Cloudflare edge, domain routing, Railway ingress, backend ASGI handling).
-  - Validate idle timeout behavior and reconnect strategy before enabling production realtime flows.
-- Rate limiting (required before public rollout)
-  - App-level rate limiting is already in place for auth/gameplay/system endpoints; continue tuning limits against real traffic.
-  - Keep edge-level controls in Cloudflare as a first layer, with backend enforcement as source of truth.
-- Cost guardrails (required)
-  - Enable provider budget alerts and spending notifications across Vercel, Railway, and Atlas.
-  - Define explicit upgrade triggers (for example, sustained latency, memory pressure, connection saturation) so scaling decisions are deliberate.
-  - Prefer conservative defaults (single backend service, right-sized resources) and revisit only when real usage data supports expansion.
+- Live URL: `https://lab.xmoravec.com/`
+- Frontend: Vercel (Next.js)
+- Backend: Railway (Dockerized FastAPI)
+- Database: MongoDB Atlas
+- Edge/DNS: Cloudflare
