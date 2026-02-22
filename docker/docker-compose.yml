@@ -17,7 +17,7 @@ services:
   backend:
     build:
       context: ../backend
-      dockerfile: ../docker/backend.Dockerfile
+      dockerfile: Dockerfile
       target: production
     container_name: lab-backend
     restart: unless-stopped
@@ -49,7 +49,7 @@ services:
   frontend:
     build:
       context: ../frontend
-      dockerfile: ../docker/frontend.Dockerfile
+      dockerfile: Dockerfile
       target: production
     container_name: lab-frontend
     restart: unless-stopped
@@ -59,6 +59,8 @@ services:
       API_INTERNAL_BASE_URL: ${API_INTERNAL_BASE_URL:-http://backend:8000}
       BACKEND_INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?INTERNAL_AUTH_SECRET must be set}
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET must be set}
+      AUTH_URL: ${AUTH_URL:?AUTH_URL must be set}
+      AUTH_TRUST_HOST: ${AUTH_TRUST_HOST:-false}
       AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
       AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
     ports:

@@ -12,7 +12,9 @@ Current status: a runnable local baseline is implemented with secure account aut
 
 ## Quick start
 
-1. Create `.env` from `.env.example`
+1. Create env files:
+   - repo root `.env` from `.env.example` (if used by your workflow)
+   - `docker/.env` from `docker/.env.example` for `docker compose` commands run in `docker/`
 2. Set required secrets in `.env` (`INTERNAL_AUTH_SECRET`, `AUTH_SECRET`)
 3. Run production-like stack: `docker compose -f docker/docker-compose.yml up --build`
 4. For development hot-reload mode, use override: `docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build`
@@ -20,6 +22,12 @@ Current status: a runnable local baseline is implemented with secure account aut
    - Frontend: `http://localhost:3000`
    - Backend docs: `http://localhost:8000/docs`
    - Backend health: `http://localhost:8000/health`
+
+Dockerfile locations:
+
+- `backend/Dockerfile` for backend image builds
+- `frontend/Dockerfile` for frontend image builds
+- Local Docker auth uses explicit canonical host via `AUTH_URL` (for example `http://localhost:3000`)
 
 Deployment-focused backend envs:
 
@@ -29,6 +37,11 @@ Deployment-focused backend envs:
 - `ENABLE_GZIP`, `GZIP_MINIMUM_SIZE_BYTES`, `GZIP_COMPRESS_LEVEL` (egress/cost control via compression)
 
 For first deployment only, temporary Atlas `0.0.0.0/0` allowlisting can be used if paired with strong DB credentials and least-privilege DB roles; tighten network access later when stable egress/private networking is available.
+
+Local Docker auth envs (required for frontend service):
+
+- `AUTH_URL` (use `http://localhost:3000` for local compose)
+- `AUTH_SECRET` (long random secret)
 
 ## Documentation
 
