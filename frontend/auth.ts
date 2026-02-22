@@ -207,23 +207,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
       }
 
-      const canRefreshAdmin =
+      if (
         typeof token.userId === "string" &&
         token.userId.length > 0 &&
         typeof token.username === "string" &&
         token.username.length > 0 &&
         typeof token.email === "string" &&
-        token.email.length > 0;
-
-      if (canRefreshAdmin) {
+        token.email.length > 0
+      ) {
+        const userId = token.userId;
+        const username = token.username;
+        const email = token.email;
         const lastSyncedAt = typeof token.adminSyncedAt === "number" ? token.adminSyncedAt : 0;
         const shouldRefresh = Date.now() - lastSyncedAt > ADMIN_SYNC_INTERVAL_MS;
 
         if (shouldRefresh) {
           const refreshedAccount = await fetchAccountById({
-            userId: token.userId,
-            username: token.username,
-            email: token.email,
+            userId,
+            username,
+            email,
           });
 
           if (refreshedAccount) {

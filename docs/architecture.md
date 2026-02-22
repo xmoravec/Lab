@@ -16,7 +16,9 @@ Current implementation target is a stable local development baseline (phase 1).
 
 - `frontend/` — Next.js application and typed API client
 - `backend/` — FastAPI app, service layer, schemas, infrastructure config
-- `docker/` — all Docker orchestration/build files (`docker-compose.yml`, service Dockerfiles)
+- `docker/` — Docker Compose orchestration files (`docker-compose.yml`, `docker-compose.dev.yml`)
+- `backend/Dockerfile` — backend container build definition
+- `frontend/Dockerfile` — frontend container build definition
 - `docs/` — architecture and engineering documentation
 
 ## Runtime architecture
@@ -323,7 +325,7 @@ This gives a deterministic “ready” signal and a reusable function for future
   - Python 3.13
   - Node 22
   - Mongo 8
-- Docker assets are centralized under `docker/` for project-structure cleanliness.
+- Docker Compose assets are centralized under `docker/`, while service Dockerfiles live with their respective apps (`backend/`, `frontend/`).
 - Python dependencies are intentionally centralized in a single file: `backend/requirements.txt`.
 - JS dependencies use modern stable ranges to allow patch/minor updates.
 - Python runtime deps are intentionally constrained to stable release lines.
