@@ -14,7 +14,7 @@ export function SiteFooter() {
             Personal website: <a href="https://www.xmoravec.com" target="_blank" rel="noreferrer" className="font-medium text-fuchsia-300 transition hover:text-fuchsia-200">www.xmoravec.com</a>
           </p>
           <p className="mt-1 text-xs text-zinc-500">
-            Planned deployment: <span className="font-medium text-zinc-300">lab.xmoravec.com</span>
+           <span className="font-medium text-zinc-300">lab.xmoravec.com</span>
           </p>
         </div>
 
